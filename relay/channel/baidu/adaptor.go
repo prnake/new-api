@@ -43,6 +43,14 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 		suffix = "embeddings/"
 	}
 	switch info.UpstreamModelName {
+	case "ERNIE-4.0-Turbo-8K":
+		suffix += "ernie-4.0-turbo-8k"
+	case "ERNIE-4.0-Turbo-8K-no-search":
+		suffix += "ernie-4.0-turbo-8k"
+	case "ERNIE-Bot-4-preview":
+		suffix += "ernie-4.0-8k-preview"
+	case "ERNIE-Bot-4-preview-no-search":
+		suffix += "ernie-4.0-8k-preview"
 	case "ERNIE-4.0":
 		suffix += "completions_pro"
 	case "ERNIE-Bot-4":

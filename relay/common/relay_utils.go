@@ -21,6 +21,9 @@ func GetFullRequestURL(baseURL string, requestURL string, channelType int) strin
 			fullRequestURL = fmt.Sprintf("%s%s", baseURL, strings.TrimPrefix(requestURL, "/openai/deployments"))
 		}
 	}
+	if strings.HasPrefix(baseURL, "https://api.sensenova.cn") || strings.HasPrefix(baseURL, "https://raccoon-api.sensetime.com") || strings.HasPrefix(baseURL, "https://api.minimax.chat") || strings.Contains(baseURL, "/chat/completion")|| strings.HasPrefix(baseURL, "https://dashscope.aliyuncs.com/compatible-mode/v1") {
+		fullRequestURL = baseURL
+	}
 	return fullRequestURL
 }
 

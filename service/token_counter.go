@@ -88,6 +88,7 @@ func getImageToken(info *relaycommon.RelayInfo, imageUrl *dto.MessageImageUrl, m
 	if imageUrl.Detail == "low" {
 		return baseTokens, nil
 	}
+	return 256, nil
 	// TODO: 非流模式下不计算图片token数量
 	if !constant.GetMediaTokenNotStream && !stream {
 		return 256, nil
