@@ -5,6 +5,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/bytedance/gopkg/util/gopool"
+	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 	"github.com/pkg/errors"
 	"io"
 	"math"
@@ -20,10 +23,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/bytedance/gopkg/util/gopool"
-	"github.com/gin-gonic/gin"
-	"github.com/gorilla/websocket"
 )
 
 func sendStreamData(c *gin.Context, data string, forceFormat bool) error {
@@ -91,11 +90,12 @@ func OaiStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.Rel
 			if len(data) < 6 { // ignore blank line or wrong format
 				continue
 			}
-			if data[:6] != "data: " && data[:6] != "[DONE]" {
+			if data[:5] != "data:" && data[:6] != "[DONE]" {
 				continue
 			}
 			mu.Lock()
-			data = data[6:]
+			data = data[5:]
+			data = strings.TrimSpace(data)
 			if !strings.HasPrefix(data, "[DONE]") {
 				if lastStreamData != "" {
 					err := sendStreamData(c, lastStreamData, forceFormat)
@@ -162,6 +162,7 @@ func OaiStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.Rel
 					//}
 					for _, choice := range streamResponse.Choices {
 						responseTextBuilder.WriteString(choice.Delta.GetContentString())
+						responseTextBuilder.WriteString(choice.Delta.GetReasoningContent())
 						if choice.Delta.ToolCalls != nil {
 							if len(choice.Delta.ToolCalls) > toolCount {
 								toolCount = len(choice.Delta.ToolCalls)
@@ -182,6 +183,7 @@ func OaiStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.Rel
 				//}
 				for _, choice := range streamResponse.Choices {
 					responseTextBuilder.WriteString(choice.Delta.GetContentString())
+					responseTextBuilder.WriteString(choice.Delta.GetReasoningContent())
 					if choice.Delta.ToolCalls != nil {
 						if len(choice.Delta.ToolCalls) > toolCount {
 							toolCount = len(choice.Delta.ToolCalls)
@@ -273,7 +275,7 @@ func OpenaiHandler(c *gin.Context, resp *http.Response, promptTokens int, model 
 	if simpleResponse.Usage.TotalTokens == 0 || (simpleResponse.Usage.PromptTokens == 0 && simpleResponse.Usage.CompletionTokens == 0) {
 		completionTokens := 0
 		for _, choice := range simpleResponse.Choices {
-			ctkm, _ := service.CountTextToken(string(choice.Message.Content), model)
+			ctkm, _ := service.CountTextToken(choice.Message.StringContent()+choice.Message.ReasoningContent, model)
 			completionTokens += ctkm
 		}
 		simpleResponse.Usage = dto.Usage{

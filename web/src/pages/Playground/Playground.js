@@ -7,7 +7,7 @@ import { SSE } from 'sse';
 import { IconSetting } from '@douyinfe/semi-icons';
 import { StyleContext } from '../../context/Style/index.js';
 import { useTranslation } from 'react-i18next';
-import { renderGroupOption } from '../../helpers/render.js';
+import { renderGroupOption, truncateText } from '../../helpers/render.js';
 
 const roleInfo = {
   user: {
@@ -99,9 +99,10 @@ const Playground = () => {
     const { success, message, data } = res.data;
     if (success) {
       let localGroupOptions = Object.entries(data).map(([group, info]) => ({
-        label: info.desc,
+        label: truncateText(info.desc, "50%"),
         value: group,
-        ratio: info.ratio
+        ratio: info.ratio,
+        fullLabel: info.desc // 保存完整文本用于tooltip
       }));
 
       if (localGroupOptions.length === 0) {
@@ -157,20 +158,17 @@ const Playground = () => {
       payload: JSON.stringify(payload),
     });
     source.addEventListener("message", (e) => {
-      if (e.data !== "[DONE]") {
-        let payload = JSON.parse(e.data);
-        // console.log("Payload: ", payload);
-        if (payload.choices.length === 0) {
-          source.close();
-          completeMessage();
-        } else {
-          let text = payload.choices[0].delta.content;
-          if (text) {
-            generateMockResponse(text);
-          }
-        }
-      } else {
+      // 只有收到 [DONE] 时才结束
+      if (e.data === "[DONE]") {
+        source.close();
         completeMessage();
+        return;
+      }
+
+      let payload = JSON.parse(e.data);
+      // 检查是否有 delta content
+      if (payload.choices?.[0]?.delta?.content) {
+        generateMockResponse(payload.choices[0].delta.content);
       }
     });
 

@@ -62,9 +62,10 @@ type ChatCompletionsStreamResponseChoice struct {
 }
 
 type ChatCompletionsStreamResponseChoiceDelta struct {
-	Content   *string    `json:"content,omitempty"`
-	Role      string     `json:"role,omitempty"`
-	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
+	Content          *string    `json:"content,omitempty"`
+	ReasoningContent *string    `json:"reasoning_content,omitempty"`
+	Role             string     `json:"role,omitempty"`
+	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
 }
 
 func (c *ChatCompletionsStreamResponseChoiceDelta) SetContentString(s string) {
@@ -78,10 +79,17 @@ func (c *ChatCompletionsStreamResponseChoiceDelta) GetContentString() string {
 	return *c.Content
 }
 
+func (c *ChatCompletionsStreamResponseChoiceDelta) GetReasoningContent() string {
+	if c.ReasoningContent == nil {
+		return ""
+	}
+	return *c.ReasoningContent
+}
+
 type ToolCall struct {
 	// Index is not nil only in chat completion chunk object
 	Index    *int         `json:"index,omitempty"`
-	ID       string       `json:"id"`
+	ID       string       `json:"id,omitempty"`
 	Type     any          `json:"type"`
 	Function FunctionCall `json:"function"`
 }

@@ -12,6 +12,7 @@ import (
 	"one-api/dto"
 	"one-api/model"
 	relaycommon "one-api/relay/common"
+	"one-api/relay/helper"
 	"one-api/service"
 	"one-api/setting"
 	"strings"
@@ -60,15 +61,16 @@ func getAndValidImageRequest(c *gin.Context, info *relaycommon.RelayInfo) (*dto.
 	//	return service.OpenAIErrorWrapper(errors.New("n must be between 1 and 10"), "invalid_field_value", http.StatusBadRequest)
 	//}
 	if setting.ShouldCheckPromptSensitive() {
-		err := service.CheckSensitiveInput(imageRequest.Prompt)
+		words, err := service.CheckSensitiveInput(imageRequest.Prompt)
 		if err != nil {
+			common.LogWarn(c, fmt.Sprintf("user sensitive words detected: %s", strings.Join(words, ",")))
 			return nil, err
 		}
 	}
 	return imageRequest, nil
 }
 
-func ImageHelper(c *gin.Context, relayMode int) *dto.OpenAIErrorWithStatusCode {
+func ImageHelper(c *gin.Context) *dto.OpenAIErrorWithStatusCode {
 	relayInfo := relaycommon.GenRelayInfo(c)
 
 	imageRequest, err := getAndValidImageRequest(c, relayInfo)
@@ -77,29 +79,20 @@ func ImageHelper(c *gin.Context, relayMode int) *dto.OpenAIErrorWithStatusCode {
 		return service.OpenAIErrorWrapper(err, "invalid_image_request", http.StatusBadRequest)
 	}
 
-	// map model name
-	modelMapping := c.GetString("model_mapping")
-	if modelMapping != "" {
-		modelMap := make(map[string]string)
-		err := json.Unmarshal([]byte(modelMapping), &modelMap)
-		if err != nil {
-			return service.OpenAIErrorWrapper(err, "unmarshal_model_mapping_failed", http.StatusInternalServerError)
-		}
-		if modelMap[imageRequest.Model] != "" {
-			imageRequest.Model = modelMap[imageRequest.Model]
-		}
+	err = helper.ModelMappedHelper(c, relayInfo)
+	if err != nil {
+		return service.OpenAIErrorWrapperLocal(err, "model_mapped_error", http.StatusInternalServerError)
 	}
-	relayInfo.UpstreamModelName = imageRequest.Model
 
-	modelPrice, success := common.GetModelPrice(imageRequest.Model, true)
-	if !success {
-		modelRatio := common.GetModelRatio(imageRequest.Model)
+	imageRequest.Model = relayInfo.UpstreamModelName
+
+	priceData := helper.ModelPriceHelper(c, relayInfo, 0, 0)
+	if !priceData.UsePrice {
 		// modelRatio 16 = modelPrice $0.04
 		// per 1 modelRatio = $0.04 / 16
-		modelPrice = 0.0025 * modelRatio
+		priceData.ModelPrice = 0.0025 * priceData.ModelRatio
 	}
 
-	groupRatio := setting.GetGroupRatio(relayInfo.Group)
 	userQuota, err := model.GetUserQuota(relayInfo.UserId, false)
 
 	sizeRatio := 1.0
@@ -122,11 +115,11 @@ func ImageHelper(c *gin.Context, relayMode int) *dto.OpenAIErrorWithStatusCode {
 		}
 	}
 
-	imageRatio := modelPrice * sizeRatio * qualityRatio * float64(imageRequest.N)
-	quota := int(imageRatio * groupRatio * common.QuotaPerUnit)
+	imageRatio := priceData.ModelPrice * sizeRatio * qualityRatio * float64(imageRequest.N)
+	quota := int(imageRatio * priceData.GroupRatio * common.QuotaPerUnit)
 
 	if userQuota-quota < 0 {
-		return service.OpenAIErrorWrapperLocal(errors.New(fmt.Sprintf("image pre-consumed quota failed, user quota: %d, need quota: %d", userQuota, quota)), "insufficient_user_quota", http.StatusBadRequest)
+		return service.OpenAIErrorWrapperLocal(fmt.Errorf("image pre-consumed quota failed, user quota: %s, need quota: %s", common.FormatQuota(userQuota), common.FormatQuota(quota)), "insufficient_user_quota", http.StatusForbidden)
 	}
 
 	adaptor := GetAdaptor(relayInfo.ApiType)
@@ -184,7 +177,6 @@ func ImageHelper(c *gin.Context, relayMode int) *dto.OpenAIErrorWithStatusCode {
 	}
 
 	logContent := fmt.Sprintf("大小 %s, 品质 %s", imageRequest.Size, quality)
-	postConsumeQuota(c, relayInfo, imageRequest.Model, usage, 0, 0, userQuota, 0, groupRatio, imageRatio, true, logContent)
-
+	postConsumeQuota(c, relayInfo, usage, 0, userQuota, priceData, logContent)
 	return nil
 }
