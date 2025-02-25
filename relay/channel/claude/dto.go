@@ -7,7 +7,6 @@ type ClaudeMetadata struct {
 type ClaudeMediaMessage struct {
 	Type        string               `json:"type"`
 	Text        string               `json:"text,omitempty"`
-	Thinking    string               `json:"thinking,omitempty"`
 	Source      *ClaudeMessageSource `json:"source,omitempty"`
 	Usage       *ClaudeUsage         `json:"usage,omitempty"`
 	StopReason  *string              `json:"stop_reason,omitempty"`
@@ -18,6 +17,9 @@ type ClaudeMediaMessage struct {
 	Input     any    `json:"input,omitempty"`
 	Content   string `json:"content,omitempty"`
 	ToolUseId string `json:"tool_use_id,omitempty"`
+	// https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking#implementing-extended-thinking
+	Thinking  *string `json:"thinking,omitempty"`
+	Signature *string `json:"signature,omitempty"`
 }
 
 type ClaudeMessageSource struct {

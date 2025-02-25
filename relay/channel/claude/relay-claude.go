@@ -272,6 +272,7 @@ func RequestOpenAI2ClaudeMessage(textRequest dto.GeneralOpenAIRequest) (*ClaudeR
 func StreamResponseClaude2OpenAI(reqMode int, claudeResponse *ClaudeResponse) (*dto.ChatCompletionsStreamResponse, *ClaudeUsage) {
 	var response dto.ChatCompletionsStreamResponse
 	var claudeUsage *ClaudeUsage
+	var reasoningText string
 	response.Object = "chat.completion.chunk"
 	response.Model = claudeResponse.Model
 	response.Choices = make([]dto.ChatCompletionsStreamResponseChoice, 0)
@@ -293,6 +294,9 @@ func StreamResponseClaude2OpenAI(reqMode int, claudeResponse *ClaudeResponse) (*
 		} else if claudeResponse.Type == "content_block_start" {
 			if claudeResponse.ContentBlock != nil {
 				//choice.Delta.SetContentString(claudeResponse.ContentBlock.Text)
+				if claudeResponse.ContentBlock.Thinking != nil {
+					reasoningText = *claudeResponse.ContentBlock.Thinking
+				}
 				if claudeResponse.ContentBlock.Type == "tool_use" {
 					tools = append(tools, dto.ToolCall{
 						ID:   claudeResponse.ContentBlock.Id,
@@ -310,6 +314,9 @@ func StreamResponseClaude2OpenAI(reqMode int, claudeResponse *ClaudeResponse) (*
 			if claudeResponse.Delta != nil {
 				choice.Index = claudeResponse.Index
 				choice.Delta.SetContentString(claudeResponse.Delta.Text)
+				if claudeResponse.Delta.Thinking != nil {
+					reasoningText = *claudeResponse.Delta.Thinking
+				}	
 				if claudeResponse.Delta.Type == "input_json_delta" {
 					tools = append(tools, dto.ToolCall{
 						Function: dto.FunctionCall{
@@ -324,6 +331,10 @@ func StreamResponseClaude2OpenAI(reqMode int, claudeResponse *ClaudeResponse) (*
 				choice.FinishReason = &finishReason
 			}
 			claudeUsage = &claudeResponse.Usage
+		} else if claudeResponse.Type == "thinking_delta" {
+			if claudeResponse.Delta != nil && claudeResponse.Delta.Thinking != nil {
+				reasoningText = *claudeResponse.Delta.Thinking
+			}
 		} else if claudeResponse.Type == "message_stop" {
 			return nil, nil
 		} else {
@@ -333,6 +344,7 @@ func StreamResponseClaude2OpenAI(reqMode int, claudeResponse *ClaudeResponse) (*
 	if claudeUsage == nil {
 		claudeUsage = &ClaudeUsage{}
 	}
+	choice.Delta.ReasoningContent = &reasoningText
 	if len(tools) > 0 {
 		choice.Delta.Content = nil // compatible with other OpenAI derivative applications, like LobeOpenAICompatibleFactory ...
 		choice.Delta.ToolCalls = tools
@@ -351,8 +363,8 @@ func ResponseClaude2OpenAI(reqMode int, claudeResponse *ClaudeResponse) *dto.Ope
 	}
 	var responseText string
 	var reasoningContent string
-	if len(claudeResponse.Content) > 0 && claudeResponse.Content[0].Thinking != "" {
-		reasoningContent = claudeResponse.Content[0].Thinking
+	if len(claudeResponse.Content) > 0 && claudeResponse.Content[0].Thinking != nil {
+		reasoningContent = *claudeResponse.Content[0].Thinking
 		responseText = claudeResponse.Content[1].Text
 	} else if len(claudeResponse.Content) > 0 {
 		responseText = claudeResponse.Content[0].Text
