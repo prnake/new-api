@@ -7,6 +7,7 @@ type ClaudeMetadata struct {
 type ClaudeMediaMessage struct {
 	Type        string               `json:"type"`
 	Text        string               `json:"text,omitempty"`
+	Thinking    string               `json:"thinking,omitempty"`
 	Source      *ClaudeMessageSource `json:"source,omitempty"`
 	Usage       *ClaudeUsage         `json:"usage,omitempty"`
 	StopReason  *string              `json:"stop_reason,omitempty"`
@@ -43,6 +44,7 @@ type InputSchema struct {
 }
 
 type ClaudeRequest struct {
+	AnthropicBeta     any             `json:"anthropic_beta,omitempty"`
 	Model             string          `json:"model"`
 	Prompt            string          `json:"prompt,omitempty"`
 	System            string          `json:"system,omitempty"`
@@ -57,6 +59,7 @@ type ClaudeRequest struct {
 	Stream     bool   `json:"stream,omitempty"`
 	Tools      []Tool `json:"tools,omitempty"`
 	ToolChoice any    `json:"tool_choice,omitempty"`
+	Thinking   any    `json:"thinking,omitempty"`
 }
 
 type ClaudeError struct {

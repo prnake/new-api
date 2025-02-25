@@ -83,6 +83,7 @@ func RequestOpenAI2ClaudeMessage(textRequest dto.GeneralOpenAIRequest) (*ClaudeR
 	}
 
 	claudeRequest := ClaudeRequest{
+		AnthropicBeta: textRequest.AnthropicBeta,
 		Model:         textRequest.Model,
 		MaxTokens:     textRequest.MaxTokens,
 		StopSequences: nil,
@@ -91,6 +92,7 @@ func RequestOpenAI2ClaudeMessage(textRequest dto.GeneralOpenAIRequest) (*ClaudeR
 		TopK:          textRequest.TopK,
 		Stream:        textRequest.Stream,
 		Tools:         claudeTools,
+		Thinking:      textRequest.Thinking,
 	}
 	if claudeRequest.MaxTokens == 0 {
 		claudeRequest.MaxTokens = 4096
@@ -348,7 +350,11 @@ func ResponseClaude2OpenAI(reqMode int, claudeResponse *ClaudeResponse) *dto.Ope
 		Created: common.GetTimestamp(),
 	}
 	var responseText string
-	if len(claudeResponse.Content) > 0 {
+	var reasoningContent string
+	if len(claudeResponse.Content) > 0 && claudeResponse.Content[0].Thinking != "" {
+		reasoningContent = claudeResponse.Content[0].Thinking
+		responseText = claudeResponse.Content[1].Text
+	} else if len(claudeResponse.Content) > 0 {
 		responseText = claudeResponse.Content[0].Text
 	}
 	tools := make([]dto.ToolCall, 0)
@@ -386,6 +392,9 @@ func ResponseClaude2OpenAI(reqMode int, claudeResponse *ClaudeResponse) *dto.Ope
 			Role: "assistant",
 		},
 		FinishReason: stopReasonClaude2OpenAI(claudeResponse.StopReason),
+	}
+	if reasoningContent != "" {
+		choice.Message.SetReasoningContent(reasoningContent)
 	}
 	choice.SetStringContent(responseText)
 	if len(tools) > 0 {
