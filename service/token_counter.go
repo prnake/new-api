@@ -1,7 +1,6 @@
 package service
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
@@ -11,6 +10,7 @@ import (
 	"one-api/constant"
 	"one-api/dto"
 	relaycommon "one-api/relay/common"
+	"one-api/setting"
 	"strings"
 	"unicode/utf8"
 
@@ -33,7 +33,7 @@ func InitTokenEncoders() {
 	if err != nil {
 		common.FatalLog(fmt.Sprintf("failed to get gpt-4o token encoder: %s", err.Error()))
 	}
-	for model, _ := range common.GetDefaultModelRatioMap() {
+	for model, _ := range setting.GetDefaultModelRatioMap() {
 		if strings.HasPrefix(model, "gpt-3.5") {
 			tokenEncoderMap[model] = cl100TokenEncoder
 		} else if strings.HasPrefix(model, "gpt-4") {
@@ -171,12 +171,7 @@ func CountTokenChatRequest(info *relaycommon.RelayInfo, request dto.GeneralOpenA
 	}
 	tkm += msgTokens
 	if request.Tools != nil {
-		toolsData, _ := json.Marshal(request.Tools)
-		var openaiTools []dto.OpenAITools
-		err := json.Unmarshal(toolsData, &openaiTools)
-		if err != nil {
-			return 0, errors.New(fmt.Sprintf("count_tools_token_fail: %s", err.Error()))
-		}
+		openaiTools := request.Tools
 		countStr := ""
 		for _, tool := range openaiTools {
 			countStr = tool.Function.Name

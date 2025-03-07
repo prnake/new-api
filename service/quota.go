@@ -38,9 +38,9 @@ func calculateAudioQuota(info QuotaInfo) int {
 		return int(info.ModelPrice * common.QuotaPerUnit * info.GroupRatio)
 	}
 
-	completionRatio := common.GetCompletionRatio(info.ModelName)
-	audioRatio := common.GetAudioRatio(info.ModelName)
-	audioCompletionRatio := common.GetAudioCompletionRatio(info.ModelName)
+	completionRatio := setting.GetCompletionRatio(info.ModelName)
+	audioRatio := setting.GetAudioRatio(info.ModelName)
+	audioCompletionRatio := setting.GetAudioCompletionRatio(info.ModelName)
 	ratio := info.GroupRatio * info.ModelRatio
 
 	quota := info.InputDetails.TextTokens + int(math.Round(float64(info.OutputDetails.TextTokens)*completionRatio))
@@ -75,7 +75,7 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 	audioInputTokens := usage.InputTokenDetails.AudioTokens
 	audioOutTokens := usage.OutputTokenDetails.AudioTokens
 	groupRatio := setting.GetGroupRatio(relayInfo.Group)
-	modelRatio := common.GetModelRatio(modelName)
+	modelRatio, _ := setting.GetModelRatio(modelName)
 
 	quotaInfo := QuotaInfo{
 		InputDetails: TokenDetails{
@@ -122,9 +122,9 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 	audioOutTokens := usage.OutputTokenDetails.AudioTokens
 
 	tokenName := ctx.GetString("token_name")
-	completionRatio := common.GetCompletionRatio(modelName)
-	audioRatio := common.GetAudioRatio(relayInfo.OriginModelName)
-	audioCompletionRatio := common.GetAudioCompletionRatio(modelName)
+	completionRatio := setting.GetCompletionRatio(modelName)
+	audioRatio := setting.GetAudioRatio(relayInfo.OriginModelName)
+	audioCompletionRatio := setting.GetAudioCompletionRatio(modelName)
 
 	quotaInfo := QuotaInfo{
 		InputDetails: TokenDetails{
@@ -184,9 +184,9 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo,
 	audioOutTokens := usage.CompletionTokenDetails.AudioTokens
 
 	tokenName := ctx.GetString("token_name")
-	completionRatio := common.GetCompletionRatio(relayInfo.OriginModelName)
-	audioRatio := common.GetAudioRatio(relayInfo.OriginModelName)
-	audioCompletionRatio := common.GetAudioCompletionRatio(relayInfo.OriginModelName)
+	completionRatio := setting.GetCompletionRatio(relayInfo.OriginModelName)
+	audioRatio := setting.GetAudioRatio(relayInfo.OriginModelName)
+	audioCompletionRatio := setting.GetAudioCompletionRatio(relayInfo.OriginModelName)
 
 	modelRatio := priceData.ModelRatio
 	groupRatio := priceData.GroupRatio
@@ -276,7 +276,7 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 	if quota > 0 {
 		err = model.DecreaseUserQuota(relayInfo.UserId, quota)
 	} else {
-		err = model.IncreaseUserQuota(relayInfo.UserId, -quota)
+		err = model.IncreaseUserQuota(relayInfo.UserId, -quota, false)
 	}
 	if err != nil {
 		return err
@@ -295,20 +295,16 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 
 	if sendEmail {
 		if (quota + preConsumedQuota) != 0 {
-			checkAndSendQuotaNotify(relayInfo.UserId, quota, preConsumedQuota)
+			checkAndSendQuotaNotify(relayInfo, quota, preConsumedQuota)
 		}
 	}
 
 	return nil
 }
 
-func checkAndSendQuotaNotify(userId int, quota int, preConsumedQuota int) {
+func checkAndSendQuotaNotify(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int) {
 	gopool.Go(func() {
-		userCache, err := model.GetUserCache(userId)
-		if err != nil {
-			common.SysError("failed to get user cache: " + err.Error())
-		}
-		userSetting := userCache.GetSetting()
+		userSetting := relayInfo.UserSetting
 		threshold := common.QuotaRemindThreshold
 		if userCustomThreshold, ok := userSetting[constant2.UserSettingQuotaWarningThreshold]; ok {
 			threshold = int(userCustomThreshold.(float64))
@@ -317,16 +313,16 @@ func checkAndSendQuotaNotify(userId int, quota int, preConsumedQuota int) {
 		//noMoreQuota := userCache.Quota-(quota+preConsumedQuota) <= 0
 		quotaTooLow := false
 		consumeQuota := quota + preConsumedQuota
-		if userCache.Quota-consumeQuota < threshold {
+		if relayInfo.UserQuota-consumeQuota < threshold {
 			quotaTooLow = true
 		}
 		if quotaTooLow {
 			prompt := "您的额度即将用尽"
 			topUpLink := fmt.Sprintf("%s/topup", setting.ServerAddress)
 			content := "{{value}}，当前剩余额度为 {{value}}，为了不影响您的使用，请及时充值。<br/>充值链接：<a href='{{value}}'>{{value}}</a>"
-			err = NotifyUser(userCache, dto.NewNotify(dto.NotifyTypeQuotaExceed, prompt, content, []interface{}{prompt, common.FormatQuota(userCache.Quota), topUpLink, topUpLink}))
+			err := NotifyUser(relayInfo.UserId, relayInfo.UserEmail, relayInfo.UserSetting, dto.NewNotify(dto.NotifyTypeQuotaExceed, prompt, content, []interface{}{prompt, common.FormatQuota(relayInfo.UserQuota), topUpLink, topUpLink}))
 			if err != nil {
-				common.SysError(fmt.Sprintf("failed to send quota notify to user %d: %s", userId, err.Error()))
+				common.SysError(fmt.Sprintf("failed to send quota notify to user %d: %s", relayInfo.UserId, err.Error()))
 			}
 		}
 	})

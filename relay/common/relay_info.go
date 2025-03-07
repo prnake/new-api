@@ -12,25 +12,30 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+type ThinkingContentInfo struct {
+	IsFirstThinkingContent  bool
+	SendLastThinkingContent bool
+}
+
 type RelayInfo struct {
-	ChannelType               int
-	ChannelId                 int
-	TokenId                   int
-	TokenKey                  string
-	UserId                    int
-	Group                     string
-	TokenUnlimited            bool
-	StartTime                 time.Time
-	FirstResponseTime         time.Time
-	IsFirstResponse           bool
-	SendLastReasoningResponse bool
-	ApiType                   int
-	IsStream                  bool
-	IsPlayground              bool
-	UsePrice                  bool
-	RelayMode                 int
-	UpstreamModelName         string
-	OriginModelName           string
+	ChannelType       int
+	ChannelId         int
+	TokenId           int
+	TokenKey          string
+	UserId            int
+	Group             string
+	TokenUnlimited    bool
+	StartTime         time.Time
+	FirstResponseTime time.Time
+	isFirstResponse   bool
+	//SendLastReasoningResponse bool
+	ApiType           int
+	IsStream          bool
+	IsPlayground      bool
+	UsePrice          bool
+	RelayMode         int
+	UpstreamModelName string
+	OriginModelName   string
 	//RecodeModelName      string
 	RequestURLPath       string
 	ApiVersion           string
@@ -50,6 +55,10 @@ type RelayInfo struct {
 	AudioUsage           bool
 	ReasoningEffort      string
 	ChannelSetting       map[string]interface{}
+	UserSetting          map[string]interface{}
+	UserEmail            string
+	UserQuota            int
+	ThinkingContentInfo
 }
 
 // 定义支持流式选项的通道类型
@@ -89,7 +98,10 @@ func GenRelayInfo(c *gin.Context) *RelayInfo {
 	apiType, _ := relayconstant.ChannelType2APIType(channelType)
 
 	info := &RelayInfo{
-		IsFirstResponse:   true,
+		UserQuota:         c.GetInt(constant.ContextKeyUserQuota),
+		UserSetting:       c.GetStringMap(constant.ContextKeyUserSetting),
+		UserEmail:         c.GetString(constant.ContextKeyUserEmail),
+		isFirstResponse:   true,
 		RelayMode:         relayconstant.Path2RelayMode(c.Request.URL.Path),
 		BaseUrl:           c.GetString("base_url"),
 		RequestURLPath:    c.Request.URL.String(),
@@ -111,6 +123,10 @@ func GenRelayInfo(c *gin.Context) *RelayInfo {
 		ApiKey:         strings.TrimPrefix(c.Request.Header.Get("Authorization"), "Bearer "),
 		Organization:   c.GetString("channel_organization"),
 		ChannelSetting: channelSetting,
+		ThinkingContentInfo: ThinkingContentInfo{
+			IsFirstThinkingContent:  true,
+			SendLastThinkingContent: false,
+		},
 	}
 	if strings.HasPrefix(c.Request.URL.Path, "/pg") {
 		info.IsPlayground = true
@@ -141,26 +157,14 @@ func (info *RelayInfo) SetIsStream(isStream bool) {
 }
 
 func (info *RelayInfo) SetFirstResponseTime() {
-	if info.IsFirstResponse {
+	if info.isFirstResponse {
 		info.FirstResponseTime = time.Now()
-		info.IsFirstResponse = false
+		info.isFirstResponse = false
 	}
 }
 
 type TaskRelayInfo struct {
-	ChannelType       int
-	ChannelId         int
-	TokenId           int
-	UserId            int
-	Group             string
-	StartTime         time.Time
-	ApiType           int
-	RelayMode         int
-	UpstreamModelName string
-	RequestURLPath    string
-	ApiKey            string
-	BaseUrl           string
-
+	*RelayInfo
 	Action       string
 	OriginTaskID string
 
@@ -168,48 +172,8 @@ type TaskRelayInfo struct {
 }
 
 func GenTaskRelayInfo(c *gin.Context) *TaskRelayInfo {
-	channelType := c.GetInt("channel_type")
-	channelId := c.GetInt("channel_id")
-
-	tokenId := c.GetInt("token_id")
-	userId := c.GetInt("id")
-	group := c.GetString("group")
-	startTime := time.Now()
-
-	apiType, _ := relayconstant.ChannelType2APIType(channelType)
-
 	info := &TaskRelayInfo{
-		RelayMode:      relayconstant.Path2RelayMode(c.Request.URL.Path),
-		BaseUrl:        c.GetString("base_url"),
-		RequestURLPath: c.Request.URL.String(),
-		ChannelType:    channelType,
-		ChannelId:      channelId,
-		TokenId:        tokenId,
-		UserId:         userId,
-		Group:          group,
-		StartTime:      startTime,
-		ApiType:        apiType,
-		ApiKey:         strings.TrimPrefix(c.Request.Header.Get("Authorization"), "Bearer "),
-	}
-	if info.BaseUrl == "" {
-		info.BaseUrl = common.ChannelBaseURLs[channelType]
+		RelayInfo: GenRelayInfo(c),
 	}
 	return info
-}
-
-func (info *TaskRelayInfo) ToRelayInfo() *RelayInfo {
-	return &RelayInfo{
-		ChannelType:       info.ChannelType,
-		ChannelId:         info.ChannelId,
-		TokenId:           info.TokenId,
-		UserId:            info.UserId,
-		Group:             info.Group,
-		StartTime:         info.StartTime,
-		ApiType:           info.ApiType,
-		RelayMode:         info.RelayMode,
-		UpstreamModelName: info.UpstreamModelName,
-		RequestURLPath:    info.RequestURLPath,
-		ApiKey:            info.ApiKey,
-		BaseUrl:           info.BaseUrl,
-	}
 }

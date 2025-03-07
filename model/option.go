@@ -3,6 +3,8 @@ package model
 import (
 	"one-api/common"
 	"one-api/setting"
+	"one-api/setting/config"
+	"one-api/setting/operation_setting"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +25,8 @@ func AllOption() ([]*Option, error) {
 func InitOptionMap() {
 	common.OptionMapRWMutex.Lock()
 	common.OptionMap = make(map[string]string)
+
+	// 添加原有的系统配置
 	common.OptionMap["FileUploadPermission"] = strconv.Itoa(common.FileUploadPermission)
 	common.OptionMap["FileDownloadPermission"] = strconv.Itoa(common.FileDownloadPermission)
 	common.OptionMap["ImageUploadPermission"] = strconv.Itoa(common.ImageUploadPermission)
@@ -84,15 +88,15 @@ func InitOptionMap() {
 	common.OptionMap["QuotaForInviter"] = strconv.Itoa(common.QuotaForInviter)
 	common.OptionMap["QuotaForInvitee"] = strconv.Itoa(common.QuotaForInvitee)
 	common.OptionMap["QuotaRemindThreshold"] = strconv.Itoa(common.QuotaRemindThreshold)
-	common.OptionMap["ShouldPreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
+	common.OptionMap["PreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
 	common.OptionMap["ModelRequestRateLimitCount"] = strconv.Itoa(setting.ModelRequestRateLimitCount)
 	common.OptionMap["ModelRequestRateLimitDurationMinutes"] = strconv.Itoa(setting.ModelRequestRateLimitDurationMinutes)
 	common.OptionMap["ModelRequestRateLimitSuccessCount"] = strconv.Itoa(setting.ModelRequestRateLimitSuccessCount)
-	common.OptionMap["ModelRatio"] = common.ModelRatio2JSONString()
-	common.OptionMap["ModelPrice"] = common.ModelPrice2JSONString()
+	common.OptionMap["ModelRatio"] = setting.ModelRatio2JSONString()
+	common.OptionMap["ModelPrice"] = setting.ModelPrice2JSONString()
 	common.OptionMap["GroupRatio"] = setting.GroupRatio2JSONString()
 	common.OptionMap["UserUsableGroups"] = setting.UserUsableGroups2JSONString()
-	common.OptionMap["CompletionRatio"] = common.CompletionRatio2JSONString()
+	common.OptionMap["CompletionRatio"] = setting.CompletionRatio2JSONString()
 	common.OptionMap["TopUpLink"] = common.TopUpLink
 	common.OptionMap["ChatLink"] = common.ChatLink
 	common.OptionMap["ChatLink2"] = common.ChatLink2
@@ -107,14 +111,20 @@ func InitOptionMap() {
 	common.OptionMap["MjForwardUrlEnabled"] = strconv.FormatBool(setting.MjForwardUrlEnabled)
 	common.OptionMap["MjActionCheckSuccessEnabled"] = strconv.FormatBool(setting.MjActionCheckSuccessEnabled)
 	common.OptionMap["CheckSensitiveEnabled"] = strconv.FormatBool(setting.CheckSensitiveEnabled)
-	common.OptionMap["DemoSiteEnabled"] = strconv.FormatBool(setting.DemoSiteEnabled)
+	common.OptionMap["DemoSiteEnabled"] = strconv.FormatBool(operation_setting.DemoSiteEnabled)
+	common.OptionMap["SelfUseModeEnabled"] = strconv.FormatBool(operation_setting.SelfUseModeEnabled)
 	common.OptionMap["ModelRequestRateLimitEnabled"] = strconv.FormatBool(setting.ModelRequestRateLimitEnabled)
 	common.OptionMap["CheckSensitiveOnPromptEnabled"] = strconv.FormatBool(setting.CheckSensitiveOnPromptEnabled)
-	//common.OptionMap["CheckSensitiveOnCompletionEnabled"] = strconv.FormatBool(constant.CheckSensitiveOnCompletionEnabled)
 	common.OptionMap["StopOnSensitiveEnabled"] = strconv.FormatBool(setting.StopOnSensitiveEnabled)
 	common.OptionMap["SensitiveWords"] = setting.SensitiveWordsToString()
 	common.OptionMap["StreamCacheQueueLength"] = strconv.Itoa(setting.StreamCacheQueueLength)
-	common.OptionMap["AutomaticDisableKeywords"] = setting.AutomaticDisableKeywordsToString()
+	common.OptionMap["AutomaticDisableKeywords"] = operation_setting.AutomaticDisableKeywordsToString()
+
+	// 自动添加所有注册的模型配置
+	modelConfigs := config.GlobalConfig.ExportAllConfigs()
+	for k, v := range modelConfigs {
+		common.OptionMap[k] = v
+	}
 
 	common.OptionMapRWMutex.Unlock()
 	loadOptionsFromDatabase()
@@ -158,6 +168,13 @@ func updateOptionMap(key string, value string) (err error) {
 	common.OptionMapRWMutex.Lock()
 	defer common.OptionMapRWMutex.Unlock()
 	common.OptionMap[key] = value
+
+	// 检查是否是模型配置 - 使用更规范的方式处理
+	if handleConfigUpdate(key, value) {
+		return nil // 已由配置系统处理
+	}
+
+	// 处理传统配置项...
 	if strings.HasSuffix(key, "Permission") {
 		intValue, _ := strconv.Atoi(value)
 		switch key {
@@ -227,14 +244,13 @@ func updateOptionMap(key string, value string) (err error) {
 		case "CheckSensitiveEnabled":
 			setting.CheckSensitiveEnabled = boolValue
 		case "DemoSiteEnabled":
-			setting.DemoSiteEnabled = boolValue
+			operation_setting.DemoSiteEnabled = boolValue
+		case "SelfUseModeEnabled":
+			operation_setting.SelfUseModeEnabled = boolValue
 		case "CheckSensitiveOnPromptEnabled":
 			setting.CheckSensitiveOnPromptEnabled = boolValue
 		case "ModelRequestRateLimitEnabled":
 			setting.ModelRequestRateLimitEnabled = boolValue
-
-		//case "CheckSensitiveOnCompletionEnabled":
-		//	constant.CheckSensitiveOnCompletionEnabled = boolValue
 		case "StopOnSensitiveEnabled":
 			setting.StopOnSensitiveEnabled = boolValue
 		case "SMTPSSLEnabled":
@@ -313,7 +329,7 @@ func updateOptionMap(key string, value string) (err error) {
 		common.QuotaForInvitee, _ = strconv.Atoi(value)
 	case "QuotaRemindThreshold":
 		common.QuotaRemindThreshold, _ = strconv.Atoi(value)
-	case "ShouldPreConsumedQuota":
+	case "PreConsumedQuota":
 		common.PreConsumedQuota, _ = strconv.Atoi(value)
 	case "ModelRequestRateLimitCount":
 		setting.ModelRequestRateLimitCount, _ = strconv.Atoi(value)
@@ -328,15 +344,15 @@ func updateOptionMap(key string, value string) (err error) {
 	case "DataExportDefaultTime":
 		common.DataExportDefaultTime = value
 	case "ModelRatio":
-		err = common.UpdateModelRatioByJSONString(value)
+		err = setting.UpdateModelRatioByJSONString(value)
 	case "GroupRatio":
 		err = setting.UpdateGroupRatioByJSONString(value)
 	case "UserUsableGroups":
 		err = setting.UpdateUserUsableGroupsByJSONString(value)
 	case "CompletionRatio":
-		err = common.UpdateCompletionRatioByJSONString(value)
+		err = setting.UpdateCompletionRatioByJSONString(value)
 	case "ModelPrice":
-		err = common.UpdateModelPriceByJSONString(value)
+		err = setting.UpdateModelPriceByJSONString(value)
 	case "TopUpLink":
 		common.TopUpLink = value
 	case "ChatLink":
@@ -350,9 +366,34 @@ func updateOptionMap(key string, value string) (err error) {
 	case "SensitiveWords":
 		setting.SensitiveWordsFromString(value)
 	case "AutomaticDisableKeywords":
-		setting.AutomaticDisableKeywordsFromString(value)
+		operation_setting.AutomaticDisableKeywordsFromString(value)
 	case "StreamCacheQueueLength":
 		setting.StreamCacheQueueLength, _ = strconv.Atoi(value)
 	}
 	return err
+}
+
+// handleConfigUpdate 处理分层配置更新，返回是否已处理
+func handleConfigUpdate(key, value string) bool {
+	parts := strings.SplitN(key, ".", 2)
+	if len(parts) != 2 {
+		return false // 不是分层配置
+	}
+
+	configName := parts[0]
+	configKey := parts[1]
+
+	// 获取配置对象
+	cfg := config.GlobalConfig.Get(configName)
+	if cfg == nil {
+		return false // 未注册的配置
+	}
+
+	// 更新配置
+	configMap := map[string]string{
+		configKey: value,
+	}
+	config.UpdateConfigFromMap(cfg, configMap)
+
+	return true // 已处理
 }
