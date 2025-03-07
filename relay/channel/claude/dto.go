@@ -20,6 +20,9 @@ type ClaudeMediaMessage struct {
 	Input     any    `json:"input,omitempty"`
 	Content   string `json:"content,omitempty"`
 	ToolUseId string `json:"tool_use_id,omitempty"`
+	// https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking#implementing-extended-thinking
+	Thinking  *string `json:"thinking,omitempty"`
+	Signature *string `json:"signature,omitempty"`
 }
 
 type ClaudeMessageSource struct {
@@ -46,6 +49,7 @@ type InputSchema struct {
 }
 
 type ClaudeRequest struct {
+	AnthropicBeta     any             `json:"anthropic_beta,omitempty"`
 	Model             string          `json:"model"`
 	Prompt            string          `json:"prompt,omitempty"`
 	System            string          `json:"system,omitempty"`

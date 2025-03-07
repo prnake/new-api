@@ -7,6 +7,7 @@ import (
 type AwsClaudeRequest struct {
 	// AnthropicVersion should be "bedrock-2023-05-31"
 	AnthropicVersion string                 `json:"anthropic_version"`
+	AnthropicBeta    any                    `json:"anthropic_beta,omitempty"`
 	System           string                 `json:"system,omitempty"`
 	Messages         []claude.ClaudeMessage `json:"messages"`
 	MaxTokens        uint                   `json:"max_tokens,omitempty"`
@@ -22,6 +23,7 @@ type AwsClaudeRequest struct {
 func copyRequest(req *claude.ClaudeRequest) *AwsClaudeRequest {
 	return &AwsClaudeRequest{
 		AnthropicVersion: "bedrock-2023-05-31",
+		AnthropicBeta:    req.AnthropicBeta,
 		System:           req.System,
 		Messages:         req.Messages,
 		MaxTokens:        req.MaxTokens,

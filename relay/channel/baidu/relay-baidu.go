@@ -28,7 +28,7 @@ func requestOpenAI2Baidu(request dto.GeneralOpenAIRequest) *BaiduChatRequest {
 		TopP:           request.TopP,
 		PenaltyScore:   request.FrequencyPenalty,
 		Stream:         request.Stream,
-		DisableSearch:  false,
+		DisableSearch:  strings.Contains(request.Model, "no-search"),
 		EnableCitation: false,
 		UserId:         request.User,
 	}

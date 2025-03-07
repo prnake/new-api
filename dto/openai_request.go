@@ -18,6 +18,7 @@ type FormatJsonSchema struct {
 }
 
 type GeneralOpenAIRequest struct {
+  AnthropicBeta       any             `json:"anthropic_beta,omitempty"`
 	Model               string            `json:"model,omitempty"`
 	Messages            []Message         `json:"messages,omitempty"`
 	Prompt              any               `json:"prompt,omitempty"`
@@ -153,6 +154,10 @@ func (m *Message) ParseToolCalls() []ToolCallRequest {
 func (m *Message) SetToolCalls(toolCalls any) {
 	toolCallsJson, _ := json.Marshal(toolCalls)
 	m.ToolCalls = toolCallsJson
+}
+
+func (m *Message) SetReasoningContent(reasoningContent string) {
+	m.ReasoningContent = reasoningContent
 }
 
 func (m *Message) StringContent() string {
