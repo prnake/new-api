@@ -29,10 +29,12 @@ import {
   Table,
   Tag,
   Tooltip,
-  Typography
+  Typography,
+  Checkbox,
+  Layout
 } from '@douyinfe/semi-ui';
 import EditChannel from '../pages/Channel/EditChannel';
-import { IconList, IconTreeTriangleDown } from '@douyinfe/semi-icons';
+import { IconList, IconTreeTriangleDown, IconClose, IconFilter, IconPlus, IconRefresh, IconSetting } from '@douyinfe/semi-icons';
 import { loadChannelModels } from './utils.js';
 import EditTagModal from '../pages/Channel/EditTagModal.js';
 import TextNumberInput from './custom/TextNumberInput.js';
@@ -141,21 +143,105 @@ const ChannelsTable = () => {
     }
   };
 
-  const columns = [
-    // {
-    //     title: '',
-    //     dataIndex: 'checkbox',
-    //     className: 'checkbox',
-    // },
+  // Define column keys for selection
+  const COLUMN_KEYS = {
+    ID: 'id',
+    NAME: 'name',
+    GROUP: 'group',
+    TYPE: 'type',
+    STATUS: 'status',
+    RESPONSE_TIME: 'response_time',
+    BALANCE: 'balance',
+    PRIORITY: 'priority',
+    WEIGHT: 'weight',
+    OPERATE: 'operate'
+  };
+
+  // State for column visibility
+  const [visibleColumns, setVisibleColumns] = useState({});
+  const [showColumnSelector, setShowColumnSelector] = useState(false);
+
+  // Load saved column preferences from localStorage
+  useEffect(() => {
+    const savedColumns = localStorage.getItem('channels-table-columns');
+    if (savedColumns) {
+      try {
+        const parsed = JSON.parse(savedColumns);
+        // Make sure all columns are accounted for
+        const defaults = getDefaultColumnVisibility();
+        const merged = { ...defaults, ...parsed };
+        setVisibleColumns(merged);
+      } catch (e) {
+        console.error('Failed to parse saved column preferences', e);
+        initDefaultColumns();
+      }
+    } else {
+      initDefaultColumns();
+    }
+  }, []);
+
+  // Update table when column visibility changes
+  useEffect(() => {
+    if (Object.keys(visibleColumns).length > 0) {
+      // Save to localStorage
+      localStorage.setItem('channels-table-columns', JSON.stringify(visibleColumns));
+    }
+  }, [visibleColumns]);
+
+  // Get default column visibility
+  const getDefaultColumnVisibility = () => {
+    return {
+      [COLUMN_KEYS.ID]: true,
+      [COLUMN_KEYS.NAME]: true,
+      [COLUMN_KEYS.GROUP]: true,
+      [COLUMN_KEYS.TYPE]: true,
+      [COLUMN_KEYS.STATUS]: true,
+      [COLUMN_KEYS.RESPONSE_TIME]: true,
+      [COLUMN_KEYS.BALANCE]: true,
+      [COLUMN_KEYS.PRIORITY]: true,
+      [COLUMN_KEYS.WEIGHT]: true,
+      [COLUMN_KEYS.OPERATE]: true
+    };
+  };
+
+  // Initialize default column visibility
+  const initDefaultColumns = () => {
+    const defaults = getDefaultColumnVisibility();
+    setVisibleColumns(defaults);
+  };
+
+  // Handle column visibility change
+  const handleColumnVisibilityChange = (columnKey, checked) => {
+    const updatedColumns = { ...visibleColumns, [columnKey]: checked };
+    setVisibleColumns(updatedColumns);
+  };
+
+  // Handle "Select All" checkbox
+  const handleSelectAll = (checked) => {
+    const allKeys = Object.keys(COLUMN_KEYS).map(key => COLUMN_KEYS[key]);
+    const updatedColumns = {};
+    
+    allKeys.forEach(key => {
+      updatedColumns[key] = checked;
+    });
+    
+    setVisibleColumns(updatedColumns);
+  };
+
+  // Define all columns with keys
+  const allColumns = [
     {
+      key: COLUMN_KEYS.ID,
       title: t('ID'),
       dataIndex: 'id'
     },
     {
+      key: COLUMN_KEYS.NAME,
       title: t('名称'),
       dataIndex: 'name'
     },
     {
+      key: COLUMN_KEYS.GROUP,
       title: t('分组'),
       dataIndex: 'group',
       render: (text, record, index) => {
@@ -177,6 +263,7 @@ const ChannelsTable = () => {
       }
     },
     {
+      key: COLUMN_KEYS.TYPE,
       title: t('类型'),
       dataIndex: 'type',
       render: (text, record, index) => {
@@ -188,6 +275,7 @@ const ChannelsTable = () => {
       }
     },
     {
+      key: COLUMN_KEYS.STATUS,
       title: t('状态'),
       dataIndex: 'status',
       render: (text, record, index) => {
@@ -211,6 +299,7 @@ const ChannelsTable = () => {
       }
     },
     {
+      key: COLUMN_KEYS.RESPONSE_TIME,
       title: t('响应时间'),
       dataIndex: 'response_time',
       render: (text, record, index) => {
@@ -218,6 +307,7 @@ const ChannelsTable = () => {
       }
     },
     {
+      key: COLUMN_KEYS.BALANCE,
       title: t('已用/剩余'),
       dataIndex: 'expired_time',
       render: (text, record, index) => {
@@ -255,6 +345,7 @@ const ChannelsTable = () => {
       }
     },
     {
+      key: COLUMN_KEYS.PRIORITY,
       title: t('优先级'),
       dataIndex: 'priority',
       render: (text, record, index) => {
@@ -304,6 +395,7 @@ const ChannelsTable = () => {
       }
     },
     {
+      key: COLUMN_KEYS.WEIGHT,
       title: t('权重'),
       dataIndex: 'weight',
       render: (text, record, index) => {
@@ -353,6 +445,7 @@ const ChannelsTable = () => {
       }
     },
     {
+      key: COLUMN_KEYS.OPERATE,
       title: '',
       dataIndex: 'operate',
       render: (text, record, index) => {
@@ -492,6 +585,72 @@ const ChannelsTable = () => {
       }
     }
   ];
+
+  // Filter columns based on visibility settings
+  const getVisibleColumns = () => {
+    return allColumns.filter(column => visibleColumns[column.key]);
+  };
+
+  // Column selector modal
+  const renderColumnSelector = () => {
+    return (
+      <Modal
+        title={t('列设置')}
+        visible={showColumnSelector}
+        onCancel={() => setShowColumnSelector(false)}
+        footer={
+          <>
+            <Button onClick={() => initDefaultColumns()}>{t('重置')}</Button>
+            <Button onClick={() => setShowColumnSelector(false)}>{t('取消')}</Button>
+            <Button type="primary" onClick={() => setShowColumnSelector(false)}>{t('确定')}</Button>
+          </>
+        }
+        style={{ width: isMobile() ? '90%' : 500 }}
+        bodyStyle={{ padding: '24px' }}
+      >
+        <div style={{ marginBottom: 20 }}>
+          <Checkbox
+            checked={Object.values(visibleColumns).every(v => v === true)}
+            indeterminate={Object.values(visibleColumns).some(v => v === true) && !Object.values(visibleColumns).every(v => v === true)}
+            onChange={e => handleSelectAll(e.target.checked)}
+          >
+            {t('全选')}
+          </Checkbox>
+        </div>
+        <div style={{ 
+          display: 'flex', 
+          flexWrap: 'wrap', 
+          maxHeight: '400px', 
+          overflowY: 'auto',
+          border: '1px solid var(--semi-color-border)',
+          borderRadius: '6px',
+          padding: '16px'
+        }}>
+          {allColumns.map(column => {
+            // Skip columns without title
+            if (!column.title) {
+              return null;
+            }
+            
+            return (
+              <div key={column.key} style={{ 
+                width: isMobile() ? '100%' : '50%', 
+                marginBottom: 16, 
+                paddingRight: 8 
+              }}>
+                <Checkbox
+                  checked={!!visibleColumns[column.key]}
+                  onChange={e => handleColumnVisibilityChange(column.key, e.target.checked)}
+                >
+                  {column.title}
+                </Checkbox>
+              </div>
+            );
+          })}
+        </div>
+      </Modal>
+    );
+  };
 
   const [channels, setChannels] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1032,6 +1191,7 @@ const ChannelsTable = () => {
 
   return (
     <>
+      {renderColumnSelector()}
       <EditTagModal
         visible={showEditTag}
         tag={editingTag}
@@ -1097,87 +1257,137 @@ const ChannelsTable = () => {
       <Divider style={{ marginBottom: 15 }} />
       <div
         style={{
-          display: isMobile() ? '' : 'flex',
+          display: 'flex',
+          flexDirection: isMobile() ? 'column' : 'row',
           marginTop: isMobile() ? 0 : -45,
           zIndex: 999,
           pointerEvents: 'none'
         }}
       >
         <Space
-          style={{ pointerEvents: 'auto', marginTop: isMobile() ? 0 : 45 }}
+          style={{ 
+            pointerEvents: 'auto', 
+            marginTop: isMobile() ? 0 : 45,
+            marginBottom: isMobile() ? 16 : 0,
+            display: 'flex',
+            flexWrap: isMobile() ? 'wrap' : 'nowrap',
+            gap: '8px'
+          }}
         >
-          <Typography.Text strong>{t('使用ID排序')}</Typography.Text>
-          <Switch
-            checked={idSort}
-            label={t('使用ID排序')}
-            uncheckedText={t('关')}
-            aria-label={t('是否用ID排序')}
-            onChange={(v) => {
-              localStorage.setItem('id-sort', v + '');
-              setIdSort(v);
-              loadChannels(0, pageSize, v, enableTagMode)
-                .then()
-                .catch((reason) => {
-                  showError(reason);
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center',
+            marginRight: 16,
+            flexWrap: 'nowrap'
+          }}>
+            <Typography.Text strong style={{ marginRight: 8 }}>{t('使用ID排序')}</Typography.Text>
+            <Switch
+              checked={idSort}
+              label={t('使用ID排序')}
+              uncheckedText={t('关')}
+              aria-label={t('是否用ID排序')}
+              onChange={(v) => {
+                localStorage.setItem('id-sort', v + '');
+                setIdSort(v);
+                loadChannels(0, pageSize, v, enableTagMode)
+                  .then()
+                  .catch((reason) => {
+                    showError(reason);
+                  });
+              }}
+            ></Switch>
+          </div>
+          
+          <div style={{ 
+            display: 'flex', 
+            flexWrap: 'wrap',
+            gap: '8px'
+          }}>
+            <Button
+              theme="light"
+              type="primary"
+              icon={<IconPlus />}
+              onClick={() => {
+                setEditingChannel({
+                  id: undefined
                 });
-            }}
-          ></Switch>
-          <Button
-            theme="light"
-            type="primary"
-            style={{ marginRight: 8 }}
-            onClick={() => {
-              setEditingChannel({
-                id: undefined
-              });
-              setShowEdit(true);
-            }}
-          >
-            {t('添加渠道')}
-          </Button>
-          <Popconfirm
-            title={t('确定？')}
-            okType={'warning'}
-            onConfirm={testAllChannels}
-            position={isMobile() ? 'top' : 'top'}
-          >
-            <Button theme="light" type="warning" style={{ marginRight: 8 }}>
-              {t('测试所有通道')}
+                setShowEdit(true);
+              }}
+            >
+              {t('添加渠道')}
             </Button>
-          </Popconfirm>
-          <Popconfirm
-            title={t('确定？')}
-            okType={'secondary'}
-            onConfirm={updateAllChannelsBalance}
-          >
-            <Button theme="light" type="secondary" style={{ marginRight: 8 }}>
-              {t('更新所有已启用通道余额')}
+            
+            <Button
+              theme="light"
+              type="primary"
+              icon={<IconRefresh />}
+              onClick={refresh}
+            >
+              {t('刷新')}
             </Button>
-          </Popconfirm>
-          <Popconfirm
-            title={t('确定是否要删除禁用通道？')}
-            content={t('此修改将不可逆')}
-            okType={'danger'}
-            onConfirm={deleteAllDisabledChannels}
-          >
-            <Button theme="light" type="danger" style={{ marginRight: 8 }}>
-              {t('删除禁用通道')}
-            </Button>
-          </Popconfirm>
-
-          <Button
-            theme="light"
-            type="primary"
-            style={{ marginRight: 8 }}
-            onClick={refresh}
-          >
-            {t('刷新')}
-          </Button>
+            
+            <Dropdown
+              trigger="click"
+              render={
+                <Dropdown.Menu>
+                  <Dropdown.Item>
+                    <Popconfirm
+                      title={t('确定？')}
+                      okType={'warning'}
+                      onConfirm={testAllChannels}
+                      position={isMobile() ? 'top' : 'top'}
+                    >
+                      <Button theme="light" type="warning" style={{ width: '100%' }}>
+                        {t('测试所有通道')}
+                      </Button>
+                    </Popconfirm>
+                  </Dropdown.Item>
+                  <Dropdown.Item>
+                    <Popconfirm
+                      title={t('确定？')}
+                      okType={'secondary'}
+                      onConfirm={updateAllChannelsBalance}
+                    >
+                      <Button theme="light" type="secondary" style={{ width: '100%' }}>
+                        {t('更新所有已启用通道余额')}
+                      </Button>
+                    </Popconfirm>
+                  </Dropdown.Item>
+                  <Dropdown.Item>
+                    <Popconfirm
+                      title={t('确定是否要删除禁用通道？')}
+                      content={t('此修改将不可逆')}
+                      okType={'danger'}
+                      onConfirm={deleteAllDisabledChannels}
+                    >
+                      <Button theme="light" type="danger" style={{ width: '100%' }}>
+                        {t('删除禁用通道')}
+                      </Button>
+                    </Popconfirm>
+                  </Dropdown.Item>
+                </Dropdown.Menu>
+              }
+            >
+              <Button theme="light" type="tertiary" icon={<IconSetting />}>
+                {t('批量操作')}
+              </Button>
+            </Dropdown>
+          </div>
         </Space>
       </div>
-      <div style={{ marginTop: 20 }}>
-        <Space>
-          <Typography.Text strong>{t('开启批量操作')}</Typography.Text>
+      <div style={{ 
+        marginTop: 20,
+        display: 'flex',
+        flexDirection: isMobile() ? 'column' : 'row',
+        alignItems: isMobile() ? 'flex-start' : 'center',
+        gap: isMobile() ? '8px' : '16px'
+      }}>
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center',
+          marginBottom: isMobile() ? 8 : 0
+        }}>
+          <Typography.Text strong style={{ marginRight: 8 }}>{t('开启批量操作')}</Typography.Text>
           <Switch
             label={t('开启批量操作')}
             uncheckedText={t('关')}
@@ -1185,20 +1395,25 @@ const ChannelsTable = () => {
             onChange={(v) => {
               setEnableBatchDelete(v);
             }}
-          ></Switch>
+          />
+        </div>
+        
+        <div style={{ 
+          display: 'flex', 
+          flexWrap: 'wrap',
+          gap: '8px'
+        }}>
           <Popconfirm
             title={t('确定是否要删除所选通道？')}
             content={t('此修改将不可逆')}
             okType={'danger'}
             onConfirm={batchDeleteChannels}
             disabled={!enableBatchDelete}
-            position={'top'}
           >
             <Button
               disabled={!enableBatchDelete}
               theme="light"
               type="danger"
-              style={{ marginRight: 8 }}
             >
               {t('删除所选通道')}
             </Button>
@@ -1208,17 +1423,27 @@ const ChannelsTable = () => {
             content={t('进行该操作时，可能导致渠道访问错误，请仅在数据库出现问题时使用')}
             okType={'warning'}
             onConfirm={fixChannelsAbilities}
-            position={'top'}
           >
-            <Button theme="light" type="secondary" style={{ marginRight: 8 }}>
+            <Button theme="light" type="secondary">
               {t('修复数据库一致性')}
             </Button>
           </Popconfirm>
-        </Space>
+        </div>
       </div>
-      <div style={{ marginTop: 20 }}>
-        <Space>
-          <Typography.Text strong>{t('标签聚合模式')}</Typography.Text>
+      
+      <div style={{ 
+        marginTop: 20,
+        display: 'flex',
+        flexDirection: isMobile() ? 'column' : 'row',
+        alignItems: isMobile() ? 'flex-start' : 'center',
+        gap: isMobile() ? '8px' : '16px'
+      }}>
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center',
+          marginBottom: isMobile() ? 8 : 0
+        }}>
+          <Typography.Text strong style={{ marginRight: 8 }}>{t('标签聚合模式')}</Typography.Text>
           <Switch
             checked={enableTagMode}
             label={t('标签聚合模式')}
@@ -1229,24 +1454,36 @@ const ChannelsTable = () => {
               loadChannels(0, pageSize, idSort, v);
             }}
           />
+        </div>
+        
+        <div style={{ 
+          display: 'flex', 
+          flexWrap: 'wrap',
+          gap: '8px'
+        }}>
           <Button
             disabled={!enableBatchDelete}
             theme="light"
             type="primary"
-            style={{ marginRight: 8 }}
             onClick={() => setShowBatchSetTag(true)}
           >
             {t('批量设置标签')}
           </Button>
-        </Space>
-
+          
+          <Button
+            theme="light"
+            type="tertiary"
+            icon={<IconSetting />}
+            onClick={() => setShowColumnSelector(true)}
+          >
+            {t('列设置')}
+          </Button>
+        </div>
       </div>
 
-
       <Table
-        className={'channel-table'}
-        style={{ marginTop: 15 }}
-        columns={columns}
+        loading={loading}
+        columns={getVisibleColumns()}
         dataSource={pageData}
         pagination={{
           currentPage: activePage,
@@ -1260,7 +1497,7 @@ const ChannelsTable = () => {
           },
           onPageChange: handlePageChange
         }}
-        loading={loading}
+        expandAllRows={false}
         onRow={handleRow}
         rowSelection={
           enableBatchDelete
@@ -1280,6 +1517,7 @@ const ChannelsTable = () => {
         onCancel={() => setShowBatchSetTag(false)}
         maskClosable={false}
         centered={true}
+        style={{ width: isMobile() ? '90%' : 500 }}
       >
         <div style={{ marginBottom: 20 }}>
           <Typography.Text>{t('请输入要设置的标签名称')}</Typography.Text>
@@ -1288,7 +1526,13 @@ const ChannelsTable = () => {
           placeholder={t('请输入标签名称')}
           value={batchSetTagValue}
           onChange={(v) => setBatchSetTagValue(v)}
+          size="large"
         />
+        <div style={{ marginTop: 16 }}>
+          <Typography.Text type="secondary">
+            {t('已选择 ${count} 个渠道').replace('${count}', selectedChannels.length)}
+          </Typography.Text>
+        </div>
       </Modal>
       
       {/* 模型测试弹窗 */}
@@ -1302,7 +1546,6 @@ const ChannelsTable = () => {
         footer={null}
         maskClosable={true}
         centered={true}
-        width={600}
       >
         <div style={{ maxHeight: '500px', overflowY: 'auto', padding: '10px' }}>
           {currentTestChannel && (
@@ -1315,8 +1558,9 @@ const ChannelsTable = () => {
               <Input
                 placeholder={t('搜索模型...')}
                 value={modelSearchKeyword}
-                onChange={(value) => setModelSearchKeyword(value)}
+                onChange={(v) => setModelSearchKeyword(v)}
                 style={{ marginBottom: '16px' }}
+                prefix={<IconFilter />}
                 showClear
               />
               
