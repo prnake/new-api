@@ -61,27 +61,27 @@ func RequestOpenAI2ClaudeComplete(textRequest dto.GeneralOpenAIRequest) *ClaudeR
 }
 
 func RequestOpenAI2ClaudeMessage(textRequest dto.GeneralOpenAIRequest) (*ClaudeRequest, error) {
-	claudeTools := make([]Tool, 0, len(textRequest.Tools))
+	// claudeTools := make([]Tool, 0, len(textRequest.Tools))
 
-	for _, tool := range textRequest.Tools {
-		if params, ok := tool.Function.Parameters.(map[string]any); ok {
-			claudeTool := Tool{
-				Name:        tool.Function.Name,
-				Description: tool.Function.Description,
-			}
-			claudeTool.InputSchema = make(map[string]interface{})
-			claudeTool.InputSchema["type"] = params["type"].(string)
-			claudeTool.InputSchema["properties"] = params["properties"]
-			claudeTool.InputSchema["required"] = params["required"]
-			for s, a := range params {
-				if s == "type" || s == "properties" || s == "required" {
-					continue
-				}
-				claudeTool.InputSchema[s] = a
-			}
-			claudeTools = append(claudeTools, claudeTool)
-		}
-	}
+	// for _, tool := range textRequest.Tools {
+	// 	if params, ok := tool.Function.Parameters.(map[string]any); ok {
+	// 		claudeTool := Tool{
+	// 			Name:        tool.Function.Name,
+	// 			Description: tool.Function.Description,
+	// 		}
+	// 		claudeTool.InputSchema = make(map[string]interface{})
+	// 		claudeTool.InputSchema["type"] = params["type"].(string)
+	// 		claudeTool.InputSchema["properties"] = params["properties"]
+	// 		claudeTool.InputSchema["required"] = params["required"]
+	// 		for s, a := range params {
+	// 			if s == "type" || s == "properties" || s == "required" {
+	// 				continue
+	// 			}
+	// 			claudeTool.InputSchema[s] = a
+	// 		}
+	// 		claudeTools = append(claudeTools, claudeTool)
+	// 	}
+	// }
 
 	claudeRequest := ClaudeRequest{
 		AnthropicBeta: textRequest.AnthropicBeta,
@@ -92,7 +92,8 @@ func RequestOpenAI2ClaudeMessage(textRequest dto.GeneralOpenAIRequest) (*ClaudeR
 		TopP:          textRequest.TopP,
 		TopK:          textRequest.TopK,
 		Stream:        textRequest.Stream,
-		Tools:         claudeTools,
+		Tools:         textRequest.AnyTools,
+		ToolChoice:    textRequest.ToolChoice,
 	}
 
 	if claudeRequest.MaxTokens == 0 {

@@ -43,7 +43,8 @@ type GeneralOpenAIRequest struct {
 	ResponseFormat      *ResponseFormat   `json:"response_format,omitempty"`
 	EncodingFormat      any               `json:"encoding_format,omitempty"`
 	Seed                float64           `json:"seed,omitempty"`
-	Tools               []ToolCallRequest `json:"tools,omitempty"`
+	AnyTools            any               `json:"tools,omitempty"`
+	Tools               []ToolCallRequest `json:"openai_tools,omitempty"`
 	ToolChoice          any               `json:"tool_choice,omitempty"`
 	User                string            `json:"user,omitempty"`
 	LogProbs            bool              `json:"logprobs,omitempty"`
