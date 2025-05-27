@@ -102,8 +102,15 @@ func RequestOpenAI2ClaudeMessage(textRequest dto.GeneralOpenAIRequest) (*dto.Cla
 		claudeRequest.MaxTokens = uint(model_setting.GetClaudeSettings().GetDefaultMaxTokens(textRequest.Model))
 	}
 
-	if model_setting.GetClaudeSettings().ThinkingAdapterEnabled &&
-		strings.HasSuffix(textRequest.Model, "-thinking") {
+	if (model_setting.GetClaudeSettings().ThinkingAdapterEnabled &&
+		strings.HasSuffix(textRequest.Model, "-thinking")) || textRequest.Reasoning.MaxThinkingTokens > 0 {
+
+		var budgetTokens int
+		if textRequest.Reasoning.MaxThinkingTokens > 0 {
+			budgetTokens = textRequest.Reasoning.MaxThinkingTokens
+		} else {
+			budgetTokens = int(float64(claudeRequest.MaxTokens) * model_setting.GetClaudeSettings().ThinkingAdapterBudgetTokensPercentage)
+		}
 
 		// 因为BudgetTokens 必须大于1024
 		if claudeRequest.MaxTokens < 1280 {
@@ -113,7 +120,7 @@ func RequestOpenAI2ClaudeMessage(textRequest dto.GeneralOpenAIRequest) (*dto.Cla
 		// BudgetTokens 为 max_tokens 的 80%
 		claudeRequest.Thinking = &dto.Thinking{
 			Type:         "enabled",
-			BudgetTokens: int(float64(claudeRequest.MaxTokens) * model_setting.GetClaudeSettings().ThinkingAdapterBudgetTokensPercentage),
+			BudgetTokens: budgetTokens,
 		}
 		// TODO: 临时处理
 		// https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking#important-considerations-when-using-extended-thinking
