@@ -1,6 +1,7 @@
 package aws
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -147,7 +148,47 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 	if a.ClientMode == ClientModeApiKey {
 		return channel.DoApiRequest(a, c, info, requestBody)
 	} else {
-		return doAwsClientRequest(c, info, a, requestBody)
+		result, err := doAwsClientRequest(c, info, a, requestBody)
+		if err != nil {
+			return result, err
+		}
+		addAnthropicBetaToRequest(c, a)
+		return result, err
+	}
+}
+
+func addAnthropicBetaToRequest(c *gin.Context, a *Adaptor) {
+	anthropicBeta := c.Request.Header.Get("anthropic-beta")
+	if anthropicBeta == "" {
+		return
+	}
+
+	if req, ok := a.AwsReq.(*bedrockruntime.InvokeModelInput); ok {
+		addAnthropicBetaToBody(req.Body, anthropicBeta, func(newBody []byte) {
+			req.Body = newBody
+		})
+		return
+	}
+
+	if req, ok := a.AwsReq.(*bedrockruntime.InvokeModelWithResponseStreamInput); ok {
+		addAnthropicBetaToBody(req.Body, anthropicBeta, func(newBody []byte) {
+			req.Body = newBody
+		})
+		return
+	}
+}
+
+func addAnthropicBetaToBody(bodyBytes []byte, anthropicBeta string, setBody func([]byte)) {
+	if bodyBytes == nil || len(bodyBytes) == 0 {
+		return
+	}
+
+	var body map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &body); err == nil {
+		body["anthropic_beta"] = strings.Split(anthropicBeta, ",")
+		if newBodyBytes, err := json.Marshal(body); err == nil {
+			setBody(newBodyBytes)
+		}
 	}
 }
 

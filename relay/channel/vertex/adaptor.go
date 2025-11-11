@@ -220,6 +220,9 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *rel
 	if a.AccountCredentials.ProjectID != "" {
 		req.Set("x-goog-user-project", a.AccountCredentials.ProjectID)
 	}
+	if anthropicBeta := c.Request.Header.Get("anthropic-beta"); anthropicBeta != "" {
+		req.Set("anthropic-beta", anthropicBeta)
+	}
 	return nil
 }
 
