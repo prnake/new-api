@@ -191,13 +191,18 @@ func addAnthropicBetaToBody(bodyBytes []byte, anthropicBeta string) []byte {
 	}
 
 	features := strings.Split(anthropicBeta, ",")
+	filtered := make([]string, 0, len(features))
 	for i := range features {
 		features[i] = strings.TrimSpace(features[i])
+		if features[i] != "" {
+			filtered = append(filtered, features[i])
+		}
 	}
-	body["anthropic_beta"] = features
+	body["anthropic_beta"] = filtered
 
 	newBodyBytes, err := json.Marshal(body)
 	if err != nil {
+		common.SysLog(fmt.Sprintf("Failed to marshal request body with anthropic-beta: %v", err))
 		return nil
 	}
 	return newBodyBytes
