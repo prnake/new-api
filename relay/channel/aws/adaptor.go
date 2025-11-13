@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/claude"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -165,32 +166,47 @@ func addAnthropicBetaToRequest(c *gin.Context, a *Adaptor) {
 	}
 
 	if req, ok := a.AwsReq.(*bedrockruntime.InvokeModelInput); ok {
-		addAnthropicBetaToBody(req.Body, anthropicBeta, func(newBody []byte) {
+		if newBody := addAnthropicBetaToBody(req.Body, anthropicBeta); newBody != nil {
 			req.Body = newBody
-		})
+		}
 		return
 	}
 
 	if req, ok := a.AwsReq.(*bedrockruntime.InvokeModelWithResponseStreamInput); ok {
-		addAnthropicBetaToBody(req.Body, anthropicBeta, func(newBody []byte) {
+		if newBody := addAnthropicBetaToBody(req.Body, anthropicBeta); newBody != nil {
 			req.Body = newBody
-		})
+		}
 		return
 	}
 }
 
-func addAnthropicBetaToBody(bodyBytes []byte, anthropicBeta string, setBody func([]byte)) {
+func addAnthropicBetaToBody(bodyBytes []byte, anthropicBeta string) []byte {
 	if bodyBytes == nil || len(bodyBytes) == 0 {
-		return
+		return nil
 	}
 
 	var body map[string]interface{}
-	if err := json.Unmarshal(bodyBytes, &body); err == nil {
-		body["anthropic_beta"] = strings.Split(anthropicBeta, ",")
-		if newBodyBytes, err := json.Marshal(body); err == nil {
-			setBody(newBodyBytes)
+	if err := json.Unmarshal(bodyBytes, &body); err != nil {
+		common.SysLog(fmt.Sprintf("Failed to unmarshal request body for anthropic-beta: %v", err))
+		return nil
+	}
+
+	features := strings.Split(anthropicBeta, ",")
+	filtered := make([]string, 0, len(features))
+	for i := range features {
+		features[i] = strings.TrimSpace(features[i])
+		if features[i] != "" {
+			filtered = append(filtered, features[i])
 		}
 	}
+	body["anthropic_beta"] = filtered
+
+	newBodyBytes, err := json.Marshal(body)
+	if err != nil {
+		common.SysLog(fmt.Sprintf("Failed to marshal request body with anthropic-beta: %v", err))
+		return nil
+	}
+	return newBodyBytes
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
