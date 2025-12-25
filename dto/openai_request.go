@@ -66,10 +66,11 @@ type GeneralOpenAIRequest struct {
 	// 注意：默认过滤此字段以保护用户隐私，但过滤后可能导致 Codex 无法正常使用
 	Store json.RawMessage `json:"store,omitempty"`
 	// Used by OpenAI to cache responses for similar requests to optimize your cache hit rates. Replaces the user field
-	PromptCacheKey string          `json:"prompt_cache_key,omitempty"`
-	LogitBias      json.RawMessage `json:"logit_bias,omitempty"`
-	Metadata       json.RawMessage `json:"metadata,omitempty"`
-	Prediction     json.RawMessage `json:"prediction,omitempty"`
+	PromptCacheKey       string          `json:"prompt_cache_key,omitempty"`
+	PromptCacheRetention json.RawMessage `json:"prompt_cache_retention,omitempty"`
+	LogitBias            json.RawMessage `json:"logit_bias,omitempty"`
+	Metadata             json.RawMessage `json:"metadata,omitempty"`
+	Prediction           json.RawMessage `json:"prediction,omitempty"`
 	// gemini
 	ExtraBody json.RawMessage `json:"extra_body,omitempty"`
 	//xai
@@ -798,19 +799,20 @@ type OpenAIResponsesRequest struct {
 	PreviousResponseID string          `json:"previous_response_id,omitempty"`
 	Reasoning          *Reasoning      `json:"reasoning,omitempty"`
 	// 服务层级字段，用于指定 API 服务等级。允许透传可能导致实际计费高于预期，默认应过滤
-	ServiceTier    string          `json:"service_tier,omitempty"`
-	Store          json.RawMessage `json:"store,omitempty"`
-	PromptCacheKey json.RawMessage `json:"prompt_cache_key,omitempty"`
-	Stream         bool            `json:"stream,omitempty"`
-	Temperature    float64         `json:"temperature,omitempty"`
-	Text           json.RawMessage `json:"text,omitempty"`
-	ToolChoice     json.RawMessage `json:"tool_choice,omitempty"`
-	Tools          json.RawMessage `json:"tools,omitempty"` // 需要处理的参数很少，MCP 参数太多不确定，所以用 map
-	TopP           float64         `json:"top_p,omitempty"`
-	Truncation     string          `json:"truncation,omitempty"`
-	User           string          `json:"user,omitempty"`
-	MaxToolCalls   uint            `json:"max_tool_calls,omitempty"`
-	Prompt         json.RawMessage `json:"prompt,omitempty"`
+	ServiceTier          string          `json:"service_tier,omitempty"`
+	Store                json.RawMessage `json:"store,omitempty"`
+	PromptCacheKey       json.RawMessage `json:"prompt_cache_key,omitempty"`
+	PromptCacheRetention json.RawMessage `json:"prompt_cache_retention,omitempty"`
+	Stream               bool            `json:"stream,omitempty"`
+	Temperature          float64         `json:"temperature,omitempty"`
+	Text                 json.RawMessage `json:"text,omitempty"`
+	ToolChoice           json.RawMessage `json:"tool_choice,omitempty"`
+	Tools                json.RawMessage `json:"tools,omitempty"` // 需要处理的参数很少，MCP 参数太多不确定，所以用 map
+	TopP                 float64         `json:"top_p,omitempty"`
+	Truncation           string          `json:"truncation,omitempty"`
+	User                 string          `json:"user,omitempty"`
+	MaxToolCalls         uint            `json:"max_tool_calls,omitempty"`
+	Prompt               json.RawMessage `json:"prompt,omitempty"`
 }
 
 func (r *OpenAIResponsesRequest) GetTokenCountMeta() *types.TokenCountMeta {
@@ -895,6 +897,12 @@ type Reasoning struct {
 	Summary string `json:"summary,omitempty"`
 }
 
+type Input struct {
+	Type    string          `json:"type,omitempty"`
+	Role    string          `json:"role,omitempty"`
+	Content json.RawMessage `json:"content,omitempty"`
+}
+
 type MediaInput struct {
 	Type     string `json:"type"`
 	Text     string `json:"text,omitempty"`
@@ -913,7 +921,7 @@ func (r *OpenAIResponsesRequest) ParseInput() []MediaInput {
 		return nil
 	}
 
-	var inputs []MediaInput
+	var mediaInputs []MediaInput
 
 	// Try string first
 	// if str, ok := common.GetJsonType(r.Input); ok {
@@ -923,60 +931,74 @@ func (r *OpenAIResponsesRequest) ParseInput() []MediaInput {
 	if common.GetJsonType(r.Input) == "string" {
 		var str string
 		_ = common.Unmarshal(r.Input, &str)
-		inputs = append(inputs, MediaInput{Type: "input_text", Text: str})
-		return inputs
+		mediaInputs = append(mediaInputs, MediaInput{Type: "input_text", Text: str})
+		return mediaInputs
 	}
 
 	// Try array of parts
 	if common.GetJsonType(r.Input) == "array" {
-		var array []any
-		_ = common.Unmarshal(r.Input, &array)
-		for _, itemAny := range array {
-			// Already parsed MediaInput
-			if media, ok := itemAny.(MediaInput); ok {
-				inputs = append(inputs, media)
-				continue
+		var inputs []Input
+		_ = common.Unmarshal(r.Input, &inputs)
+		for _, input := range inputs {
+			if common.GetJsonType(input.Content) == "string" {
+				var str string
+				_ = common.Unmarshal(input.Content, &str)
+				mediaInputs = append(mediaInputs, MediaInput{Type: "input_text", Text: str})
 			}
-			// Generic map
-			item, ok := itemAny.(map[string]any)
-			if !ok {
-				continue
-			}
-			typeVal, ok := item["type"].(string)
-			if !ok {
-				continue
-			}
-			switch typeVal {
-			case "input_text":
-				text, _ := item["text"].(string)
-				inputs = append(inputs, MediaInput{Type: "input_text", Text: text})
-			case "input_image":
-				// image_url may be string or object with url field
-				var imageUrl string
-				switch v := item["image_url"].(type) {
-				case string:
-					imageUrl = v
-				case map[string]any:
-					if url, ok := v["url"].(string); ok {
-						imageUrl = url
+
+			if common.GetJsonType(input.Content) == "array" {
+				var array []any
+				_ = common.Unmarshal(input.Content, &array)
+				for _, itemAny := range array {
+					// Already parsed MediaContent
+					if media, ok := itemAny.(MediaInput); ok {
+						mediaInputs = append(mediaInputs, media)
+						continue
+					}
+
+					// Generic map
+					item, ok := itemAny.(map[string]any)
+					if !ok {
+						continue
+					}
+
+					typeVal, ok := item["type"].(string)
+					if !ok {
+						continue
+					}
+					switch typeVal {
+					case "input_text":
+						text, _ := item["text"].(string)
+						mediaInputs = append(mediaInputs, MediaInput{Type: "input_text", Text: text})
+					case "input_image":
+						// image_url may be string or object with url field
+						var imageUrl string
+						switch v := item["image_url"].(type) {
+						case string:
+							imageUrl = v
+						case map[string]any:
+							if url, ok := v["url"].(string); ok {
+								imageUrl = url
+							}
+						}
+						mediaInputs = append(mediaInputs, MediaInput{Type: "input_image", ImageUrl: imageUrl})
+					case "input_file":
+						// file_url may be string or object with url field
+						var fileUrl string
+						switch v := item["file_url"].(type) {
+						case string:
+							fileUrl = v
+						case map[string]any:
+							if url, ok := v["url"].(string); ok {
+								fileUrl = url
+							}
+						}
+						mediaInputs = append(mediaInputs, MediaInput{Type: "input_file", FileUrl: fileUrl})
 					}
 				}
-				inputs = append(inputs, MediaInput{Type: "input_image", ImageUrl: imageUrl})
-			case "input_file":
-				// file_url may be string or object with url field
-				var fileUrl string
-				switch v := item["file_url"].(type) {
-				case string:
-					fileUrl = v
-				case map[string]any:
-					if url, ok := v["url"].(string); ok {
-						fileUrl = url
-					}
-				}
-				inputs = append(inputs, MediaInput{Type: "input_file", FileUrl: fileUrl})
 			}
 		}
 	}
 
-	return inputs
+	return mediaInputs
 }
