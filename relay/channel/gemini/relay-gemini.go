@@ -1,6 +1,7 @@
 package gemini
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
@@ -32,6 +34,7 @@ var geminiSupportedMimeTypes = map[string]bool{
 	"audio/wav":       true,
 	"image/png":       true,
 	"image/jpeg":      true,
+	"image/jpg":       true, // support old image/jpeg
 	"image/webp":      true,
 	"text/plain":      true,
 	"video/mov":       true,
@@ -98,6 +101,7 @@ func clampThinkingBudget(modelName string, budget int) int {
 // "effort": "high" - Allocates a large portion of tokens for reasoning (approximately 80% of max_tokens)
 // "effort": "medium" - Allocates a moderate portion of tokens (approximately 50% of max_tokens)
 // "effort": "low" - Allocates a smaller portion of tokens (approximately 20% of max_tokens)
+// "effort": "minimal" - Allocates a minimal portion of tokens (approximately 5% of max_tokens)
 func clampThinkingBudgetByEffort(modelName string, effort string) int {
 	isNew25Pro := isNew25ProModel(modelName)
 	is25FlashLite := is25FlashLiteModel(modelName)
@@ -118,16 +122,10 @@ func clampThinkingBudgetByEffort(modelName string, effort string) int {
 		maxBudget = maxBudget * 50 / 100
 	case "low":
 		maxBudget = maxBudget * 20 / 100
+	case "minimal":
+		maxBudget = maxBudget * 5 / 100
 	}
 	return clampThinkingBudget(modelName, maxBudget)
-}
-
-func parseThinkingLevelSuffix(modelName string) (string, string) {
-	base, level, ok := reasoning.TrimEffortSuffix(modelName)
-	if !ok {
-		return modelName, ""
-	}
-	return base, level
 }
 
 func ThinkingAdaptor(geminiRequest *dto.GeminiChatRequest, info *relaycommon.RelayInfo, oaiRequest ...dto.GeneralOpenAIRequest) {
@@ -186,7 +184,7 @@ func ThinkingAdaptor(geminiRequest *dto.GeminiChatRequest, info *relaycommon.Rel
 					ThinkingBudget: common.GetPointer(0),
 				}
 			}
-		} else if _, level := parseThinkingLevelSuffix(modelName); level != "" {
+		} else if _, level, ok := reasoning.TrimEffortSuffix(info.UpstreamModelName); ok && level != "" {
 			geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{
 				IncludeThoughts: true,
 				ThinkingLevel:   level,
@@ -379,7 +377,7 @@ func CovertOpenAI2Gemini(c *gin.Context, textRequest dto.GeneralOpenAIRequest, i
 	var system_content []string
 	//shouldAddDummyModelMessage := false
 	for _, message := range textRequest.Messages {
-		if message.Role == "system" {
+		if message.Role == "system" || message.Role == "developer" {
 			system_content = append(system_content, message.StringContent())
 			continue
 		} else if message.Role == "tool" || message.Role == "function" {
@@ -1366,4 +1364,77 @@ func GeminiImageHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 	}
 
 	return usage, nil
+}
+
+type GeminiModelsResponse struct {
+	Models        []dto.GeminiModel `json:"models"`
+	NextPageToken string            `json:"nextPageToken"`
+}
+
+func FetchGeminiModels(baseURL, apiKey, proxyURL string) ([]string, error) {
+	client, err := service.GetHttpClientWithProxy(proxyURL)
+	if err != nil {
+		return nil, fmt.Errorf("创建HTTP客户端失败: %v", err)
+	}
+
+	allModels := make([]string, 0)
+	nextPageToken := ""
+	maxPages := 100 // Safety limit to prevent infinite loops
+
+	for page := 0; page < maxPages; page++ {
+		url := fmt.Sprintf("%s/v1beta/models", baseURL)
+		if nextPageToken != "" {
+			url = fmt.Sprintf("%s?pageToken=%s", url, nextPageToken)
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		request, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("创建请求失败: %v", err)
+		}
+
+		request.Header.Set("x-goog-api-key", apiKey)
+
+		response, err := client.Do(request)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("请求失败: %v", err)
+		}
+
+		if response.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(response.Body)
+			response.Body.Close()
+			cancel()
+			return nil, fmt.Errorf("服务器返回错误 %d: %s", response.StatusCode, string(body))
+		}
+
+		body, err := io.ReadAll(response.Body)
+		response.Body.Close()
+		cancel()
+		if err != nil {
+			return nil, fmt.Errorf("读取响应失败: %v", err)
+		}
+
+		var modelsResponse GeminiModelsResponse
+		if err = common.Unmarshal(body, &modelsResponse); err != nil {
+			return nil, fmt.Errorf("解析响应失败: %v", err)
+		}
+
+		for _, model := range modelsResponse.Models {
+			modelNameValue, ok := model.Name.(string)
+			if !ok {
+				continue
+			}
+			modelName := strings.TrimPrefix(modelNameValue, "models/")
+			allModels = append(allModels, modelName)
+		}
+
+		nextPageToken = modelsResponse.NextPageToken
+		if nextPageToken == "" {
+			break
+		}
+	}
+
+	return allModels, nil
 }

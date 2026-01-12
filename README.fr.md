@@ -212,9 +212,11 @@ docker run --name new-api -d --restart always \
 - 🚦 Limitation du débit du modèle pour les utilisateurs
 
 **Conversion de format:**
-- 🔄 OpenAI ⇄ Claude Messages
-- 🔄 OpenAI ⇄ Gemini Chat
-- 🔄 Fonctionnalité de la pensée au contenu
+- 🔄 **OpenAI Compatible ⇄ Claude Messages**
+- 🔄 **OpenAI Compatible → Google Gemini**
+- 🔄 **Google Gemini → OpenAI Compatible** - Texte uniquement, les appels de fonction ne sont pas encore pris en charge
+- 🚧 **OpenAI Compatible ⇄ OpenAI Responses** - En développement
+- 🔄 **Fonctionnalité de la pensée au contenu**
 
 **Prise en charge de l'effort de raisonnement:**
 
@@ -304,6 +306,13 @@ docker run --name new-api -d --restart always \
 | `MAX_REQUEST_BODY_MB` | Taille maximale du corps de requête (Mo, comptée **après décompression** ; évite les requêtes énormes/zip bombs qui saturent la mémoire). Dépassement ⇒ `413` | `32` |
 | `AZURE_DEFAULT_API_VERSION` | Version de l'API Azure | `2025-04-01-preview` |
 | `ERROR_LOG_ENABLED` | Interrupteur du journal d'erreurs | `false` |
+| `PYROSCOPE_URL` | Adresse du serveur Pyroscope | - |
+| `PYROSCOPE_APP_NAME` | Nom de l'application Pyroscope | `new-api` |
+| `PYROSCOPE_BASIC_AUTH_USER` | Utilisateur Basic Auth Pyroscope | - |
+| `PYROSCOPE_BASIC_AUTH_PASSWORD` | Mot de passe Basic Auth Pyroscope | - |
+| `PYROSCOPE_MUTEX_RATE` | Taux d'échantillonnage mutex Pyroscope | `5` |
+| `PYROSCOPE_BLOCK_RATE` | Taux d'échantillonnage block Pyroscope | `5` |
+| `HOSTNAME` | Nom d'hôte tagué pour Pyroscope | `new-api` |
 
 📖 **Configuration complète:** [Documentation des variables d'environnement](https://docs.newapi.pro/en/docs/installation/config-maintenance/environment-variables)
 

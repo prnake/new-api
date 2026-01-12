@@ -214,9 +214,11 @@ docker run --name new-api -d --restart always \
 - 🚦 用户级别模型限流
 
 **格式转换：**
-- 🔄 OpenAI ⇄ Claude Messages
-- 🔄 OpenAI ⇄ Gemini Chat
-- 🔄 思考转内容功能
+- 🔄 **OpenAI Compatible ⇄ Claude Messages**
+- 🔄 **OpenAI Compatible → Google Gemini**
+- 🔄 **Google Gemini → OpenAI Compatible** - 仅支持文本，暂不支持函数调用
+- 🚧 **OpenAI Compatible ⇄ OpenAI Responses** - 开发中
+- 🔄 **思考转内容功能**
 
 **Reasoning Effort 支持：**
 
@@ -309,6 +311,13 @@ docker run --name new-api -d --restart always \
 | `MAX_REQUEST_BODY_MB` | 请求体最大大小（MB，**解压后**计；防止超大请求/zip bomb 导致内存暴涨），超过将返回 `413` | `32` |
 | `AZURE_DEFAULT_API_VERSION` | Azure API 版本                                                 | `2025-04-01-preview` |
 | `ERROR_LOG_ENABLED` | 错误日志开关                                                       | `false` |
+| `PYROSCOPE_URL` | Pyroscope 服务地址                                            | - |
+| `PYROSCOPE_APP_NAME` | Pyroscope 应用名                                        | `new-api` |
+| `PYROSCOPE_BASIC_AUTH_USER` | Pyroscope Basic Auth 用户名                        | - |
+| `PYROSCOPE_BASIC_AUTH_PASSWORD` | Pyroscope Basic Auth 密码                  | - |
+| `PYROSCOPE_MUTEX_RATE` | Pyroscope mutex 采样率                               | `5` |
+| `PYROSCOPE_BLOCK_RATE` | Pyroscope block 采样率                               | `5` |
+| `HOSTNAME` | Pyroscope 标签里的主机名                                          | `new-api` |
 
 📖 **完整配置：** [环境变量文档](https://docs.newapi.pro/zh/docs/installation/config-maintenance/environment-variables)
 
