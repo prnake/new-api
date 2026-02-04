@@ -241,7 +241,41 @@ func getAwsModelID(requestModel string) string {
 	return requestModel
 }
 
-func awsHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (*types.NewAPIError, *dto.Usage) {
+func awsHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor, resp *http.Response) (*types.NewAPIError, *dto.Usage) {
+	if a.ClientMode == ClientModeBedrockProxy {
+		if resp == nil {
+			return types.NewError(errors.New("resp is nil"), types.ErrorCodeBadResponseBody), nil
+		}
+		defer service.CloseResponseBodyGracefully(resp)
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return types.NewError(err, types.ErrorCodeBadResponseBody), nil
+		}
+
+		usage := &dto.Usage{}
+		var claudeResponse dto.ClaudeResponse
+		if err := common.Unmarshal(body, &claudeResponse); err == nil {
+			claudeInfo := &claude.ClaudeResponseInfo{
+				ResponseId:   helper.GetResponseID(c),
+				Created:      common.GetTimestamp(),
+				Model:        info.UpstreamModelName,
+				ResponseText: strings.Builder{},
+				Usage:        &dto.Usage{},
+			}
+			claude.FormatClaudeResponseInfo(claude.RequestModeMessage, &claudeResponse, nil, claudeInfo)
+			usage = claudeInfo.Usage
+		} else {
+			usage.PromptTokens = info.GetEstimatePromptTokens()
+		}
+
+		writeBedrockProxyHeaders(c, resp.Header, len(body))
+		c.Writer.WriteHeader(resp.StatusCode)
+		_, _ = c.Writer.Write(body)
+		c.Writer.Flush()
+
+		return nil, usage
+	}
 
 	ctx, cancel := newAwsInvokeContext()
 	defer cancel()
@@ -272,7 +306,22 @@ func awsHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (*types
 	return nil, claudeInfo.Usage
 }
 
-func awsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (*types.NewAPIError, *dto.Usage) {
+func awsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor, resp *http.Response) (*types.NewAPIError, *dto.Usage) {
+	if a.ClientMode == ClientModeBedrockProxy {
+		if resp == nil {
+			return types.NewError(errors.New("resp is nil"), types.ErrorCodeBadResponseBody), nil
+		}
+		defer service.CloseResponseBodyGracefully(resp)
+
+		writeBedrockProxyHeaders(c, resp.Header, -1)
+		c.Writer.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(c.Writer, resp.Body)
+		c.Writer.Flush()
+
+		usage := &dto.Usage{PromptTokens: info.GetEstimatePromptTokens()}
+		return nil, usage
+	}
+
 	ctx, cancel := newAwsInvokeContext()
 	defer cancel()
 
@@ -311,6 +360,20 @@ func awsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (
 
 	claude.HandleStreamFinalResponse(c, info, claudeInfo, claude.RequestModeMessage)
 	return nil, claudeInfo.Usage
+}
+
+func writeBedrockProxyHeaders(c *gin.Context, header http.Header, contentLength int) {
+	for key, values := range header {
+		if strings.EqualFold(key, "Content-Length") {
+			continue
+		}
+		for _, value := range values {
+			c.Writer.Header().Add(key, value)
+		}
+	}
+	if contentLength >= 0 {
+		c.Writer.Header().Set("Content-Length", fmt.Sprintf("%d", contentLength))
+	}
 }
 
 // Nova模型处理函数

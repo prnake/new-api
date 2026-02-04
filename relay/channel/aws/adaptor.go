@@ -1,14 +1,15 @@
 package aws
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 
-	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/claude"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -25,14 +26,15 @@ type ClientMode int
 const (
 	ClientModeApiKey ClientMode = iota + 1
 	ClientModeAKSK
+	ClientModeBedrockProxy
 )
 
 type Adaptor struct {
-	ClientMode ClientMode
-	AwsClient  *bedrockruntime.Client
-	AwsModelId string
-	AwsReq     any
-	IsNova     bool
+	ClientMode  ClientMode
+	AwsClient   *bedrockruntime.Client
+	AwsModelId  string
+	AwsReq      any
+	IsNova      bool
 	ModelPrefix string // 可配置的模型前缀，如 "global", "us", "eu", "apac", "jp" 等
 }
 
@@ -89,7 +91,27 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 }
 
+func shouldUseBedrockProxy(info *relaycommon.RelayInfo) bool {
+	return info != nil && info.ApiKey != "" && !strings.Contains(info.ApiKey, "|")
+}
+
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
+	if shouldUseBedrockProxy(info) {
+		a.ClientMode = ClientModeBedrockProxy
+		if info.ChannelBaseUrl == "" {
+			return "", errors.New("bedrock proxy base url is empty")
+		}
+		model := info.UpstreamModelName
+		if model == "" {
+			model = info.OriginModelName
+		}
+		baseURL := strings.TrimRight(info.ChannelBaseUrl, "/")
+		suffix := "invoke"
+		if info.IsStream {
+			suffix = "invoke-with-response-stream"
+		}
+		return fmt.Sprintf("%s/model/%s/%s", baseURL, model, suffix), nil
+	}
 	if info.ChannelOtherSettings.AwsKeyType == dto.AwsKeyTypeApiKey {
 		awsModelId := getAwsModelID(info.UpstreamModelName)
 		a.ClientMode = ClientModeApiKey
@@ -106,7 +128,7 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 
 func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *relaycommon.RelayInfo) error {
 	claude.CommonClaudeHeadersOperation(c, req, info)
-	if a.ClientMode == ClientModeApiKey {
+	if a.ClientMode == ClientModeApiKey || a.ClientMode == ClientModeBedrockProxy {
 		req.Set("Authorization", "Bearer "+info.ApiKey)
 	}
 	return nil
@@ -147,6 +169,23 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
+	if shouldUseBedrockProxy(info) {
+		a.ClientMode = ClientModeBedrockProxy
+		if !a.IsNova {
+			requestHeader := http.Header{}
+			_ = a.SetupRequestHeader(c, &requestHeader, info)
+			awsClaudeReq, err := formatRequest(requestBody, requestHeader)
+			if err != nil {
+				return nil, err
+			}
+			requestBytes, err := buildAwsRequestBody(c, info, awsClaudeReq)
+			if err != nil {
+				return nil, err
+			}
+			requestBody = bytes.NewBuffer(requestBytes)
+		}
+		return channel.DoApiRequest(a, c, info, requestBody)
+	}
 	if a.ClientMode == ClientModeApiKey {
 		return channel.DoApiRequest(a, c, info, requestBody)
 	} else {
@@ -210,6 +249,14 @@ func addAnthropicBetaToBody(bodyBytes []byte, anthropicBeta string) []byte {
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
+	if a.ClientMode == ClientModeBedrockProxy {
+		if info.IsStream {
+			err, usage := awsStreamHandler(c, info, a, resp)
+			return usage, err
+		}
+		err, usage := awsHandler(c, info, a, resp)
+		return usage, err
+	}
 	if a.ClientMode == ClientModeApiKey {
 		claudeAdaptor := claude.Adaptor{}
 		usage, err = claudeAdaptor.DoResponse(c, resp, info)
@@ -218,9 +265,9 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 			err, usage = handleNovaRequest(c, info, a)
 		} else {
 			if info.IsStream {
-				err, usage = awsStreamHandler(c, info, a)
+				err, usage = awsStreamHandler(c, info, a, resp)
 			} else {
-				err, usage = awsHandler(c, info, a)
+				err, usage = awsHandler(c, info, a, resp)
 			}
 		}
 	}
