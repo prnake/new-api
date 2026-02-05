@@ -183,9 +183,5 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 		}
 	}
 
-	if channel != nil && affinityHash != "" && param.GetRetry() == 0 {
-		go SetAffinityChannelId(selectGroup, param.ModelName, affinityHash, channel.Id)
-	}
-
 	return channel, selectGroup, nil
 }

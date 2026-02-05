@@ -159,8 +159,39 @@ func GetPreferredChannelByAffinity(c *gin.Context, modelName string, usingGroup 
 func MarkChannelAffinityUsed(c *gin.Context, selectedGroup string, channelID int) {
 }
 
-// RecordChannelAffinity is a stub for main branch compatibility.
-func RecordChannelAffinity(c *gin.Context, channelID int) {
+// RecordChannelAffinity records the successful channel for session affinity.
+// Called after request completes successfully, updates Redis with the actual successful channel.
+func RecordChannelAffinity(c *gin.Context, initialChannelID int) {
+	if c == nil {
+		return
+	}
+	affinityHash := common.GetContextKeyString(c, constant.ContextKeyAffinityHash)
+	if affinityHash == "" {
+		return
+	}
+
+	successChannelID := c.GetInt("channel_id")
+	if successChannelID <= 0 {
+		successChannelID = initialChannelID
+	}
+	if successChannelID <= 0 {
+		return
+	}
+
+	group := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+	if group == "auto" {
+		group = common.GetContextKeyString(c, constant.ContextKeyAutoGroup)
+	}
+	if group == "" || group == "auto" {
+		return
+	}
+
+	modelName := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
+	if modelName == "" {
+		return
+	}
+
+	go SetAffinityChannelId(group, modelName, affinityHash, successChannelID)
 }
 
 // ObserveChannelAffinityUsageCacheFromContext is a stub for main branch compatibility.
