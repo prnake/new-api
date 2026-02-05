@@ -1244,6 +1244,8 @@
     "无邀请人": "No Inviter",
     "无限制": "Unlimited",
     "无限额度": "Unlimited quota",
+    "每分钟请求数": "Requests per minute",
+    "每分钟Token数": "Tokens per minute",
     "日志导出成功": "Logs exported successfully",
     "日志已下载": "Logs downloaded",
     "日志已加载": "Logs loaded",

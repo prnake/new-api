@@ -52,6 +52,10 @@ export const useChannelsData = () => {
   const [channelCount, setChannelCount] = useState(0);
   const [groupOptions, setGroupOptions] = useState([]);
 
+  // Channel stats (RPM/TPM)
+  const [channelStats, setChannelStats] = useState({});
+  const [loadingStats, setLoadingStats] = useState(false);
+
   // UI states
   const [showEdit, setShowEdit] = useState(false);
   const [enableBatchDelete, setEnableBatchDelete] = useState(false);
@@ -134,6 +138,7 @@ export const useChannelsData = () => {
     TYPE: 'type',
     STATUS: 'status',
     RESPONSE_TIME: 'response_time',
+    RPM_TPM: 'rpm_tpm',
     BALANCE: 'balance',
     PRIORITY: 'priority',
     WEIGHT: 'weight',
@@ -174,6 +179,7 @@ export const useChannelsData = () => {
       [COLUMN_KEYS.TYPE]: true,
       [COLUMN_KEYS.STATUS]: true,
       [COLUMN_KEYS.RESPONSE_TIME]: true,
+      [COLUMN_KEYS.RPM_TPM]: true,
       [COLUMN_KEYS.BALANCE]: true,
       [COLUMN_KEYS.PRIORITY]: true,
       [COLUMN_KEYS.WEIGHT]: true,
@@ -360,6 +366,7 @@ export const useChannelsData = () => {
       }
       setChannelFormat(items, enableTagMode);
       setChannelCount(total);
+      fetchChannelStats(items);
     } else {
       showError(message);
     }
@@ -406,6 +413,7 @@ export const useChannelsData = () => {
         setChannelFormat(items, enableTagMode);
         setChannelCount(total);
         setActivePage(page);
+        fetchChannelStats(items);
       } else {
         showError(message);
       }
@@ -563,6 +571,44 @@ export const useChannelsData = () => {
     } catch (error) {
       showError(error.message);
     }
+  };
+
+  const fetchChannelStats = async (channelList) => {
+    if (!channelList || channelList.length === 0) return;
+
+    setLoadingStats(true);
+    const stats = {};
+
+    const allChannelIds = [];
+    channelList.forEach((channel) => {
+      if (channel.children !== undefined) {
+        channel.children.forEach((child) => allChannelIds.push(child.id));
+      } else {
+        allChannelIds.push(channel.id);
+      }
+    });
+
+    const batchSize = 10;
+    for (let i = 0; i < allChannelIds.length; i += batchSize) {
+      const batch = allChannelIds.slice(i, i + batchSize);
+      const promises = batch.map(async (channelId) => {
+        try {
+          const res = await API.get(`/api/log/stat?channel=${channelId}`);
+          if (res?.data?.success) {
+            stats[channelId] = {
+              rpm: res.data.data.rpm || 0,
+              tpm: res.data.data.tpm || 0,
+            };
+          }
+        } catch (error) {
+          stats[channelId] = { rpm: 0, tpm: 0 };
+        }
+      });
+      await Promise.all(promises);
+    }
+
+    setChannelStats(stats);
+    setLoadingStats(false);
   };
 
   // Copy channel
@@ -1124,6 +1170,8 @@ export const useChannelsData = () => {
     statusFilter,
     compactMode,
     globalPassThroughEnabled,
+    channelStats,
+    loadingStats,
 
     // UI states
     showEdit,

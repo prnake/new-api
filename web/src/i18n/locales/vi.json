@@ -1240,6 +1240,8 @@
     "无邀请人": "Không có người mời",
     "无限制": "Không giới hạn",
     "无限额度": "Hạn ngạch không giới hạn",
+    "每分钟请求数": "Yêu cầu mỗi phút",
+    "每分钟Token数": "Token mỗi phút",
     "日志导出成功": "Logs exported successfully",
     "日志已下载": "Logs downloaded",
     "日志已加载": "Logs loaded",

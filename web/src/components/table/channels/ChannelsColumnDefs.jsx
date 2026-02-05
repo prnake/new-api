@@ -291,6 +291,8 @@ export const getChannelsColumns = ({
   checkOllamaVersion,
   setShowMultiKeyManageModal,
   setCurrentMultiKeyChannel,
+  channelStats,
+  loadingStats,
 }) => {
   return [
     {
@@ -427,6 +429,40 @@ export const getChannelsColumns = ({
       title: t('响应时间'),
       dataIndex: 'response_time',
       render: (text, record, index) => <div>{renderResponseTime(text, t)}</div>,
+    },
+    {
+      key: COLUMN_KEYS.RPM_TPM,
+      title: 'RPM / TPM',
+      dataIndex: 'rpm_tpm',
+      render: (text, record, index) => {
+        if (record.children !== undefined) {
+          return <span>-</span>;
+        }
+        const stats = channelStats[record.id];
+        if (loadingStats && !stats) {
+          return (
+            <Tag color='grey' shape='circle'>
+              {t('加载中...')}
+            </Tag>
+          );
+        }
+        const rpm = stats?.rpm ?? 0;
+        const tpm = stats?.tpm ?? 0;
+        return (
+          <Space spacing={4}>
+            <Tooltip content={t('每分钟请求数')}>
+              <Tag color='pink' shape='circle'>
+                {rpm}
+              </Tag>
+            </Tooltip>
+            <Tooltip content={t('每分钟Token数')}>
+              <Tag color='cyan' shape='circle'>
+                {tpm}
+              </Tag>
+            </Tooltip>
+          </Space>
+        );
+      },
     },
     {
       key: COLUMN_KEYS.BALANCE,

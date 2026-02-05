@@ -259,19 +259,15 @@ const renderQuotaUsage = (text, record, t) => {
   const remain = parseInt(record.remain_quota) || 0;
   const total = used + remain;
   if (record.unlimited_quota) {
-    const popoverContent = (
-      <div className='text-xs p-2'>
-        <Paragraph copyable={{ content: renderQuota(used) }}>
-          {t('已用额度')}: {renderQuota(used)}
-        </Paragraph>
-      </div>
-    );
     return (
-      <Popover content={popoverContent} position='top'>
+      <Space spacing={4}>
         <Tag color='white' shape='circle'>
           {t('无限额度')}
         </Tag>
-      </Popover>
+        <Tag color='grey' shape='circle' type='light'>
+          {t('已用')}: {renderQuota(used)}
+        </Tag>
+      </Space>
     );
   }
   const percent = total > 0 ? (remain / total) * 100 : 0;
