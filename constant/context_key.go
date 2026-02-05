@@ -57,8 +57,9 @@ const (
 	ContextKeySystemPromptOverride ContextKey = "system_prompt_override"
 
 	/* session affinity related keys */
-	ContextKeyAffinityHash ContextKey = "affinity_hash"
-	ContextKeyAffinityHit  ContextKey = "affinity_hit"
+	ContextKeyAffinityHash     ContextKey = "affinity_hash"
+	ContextKeyAffinityHit      ContextKey = "affinity_hit"
+	ContextKeyAffinityKeyIndex ContextKey = "affinity_key_index" // 会话亲和命中的密钥索引
 
 	// ContextKeyFileSourcesToCleanup stores file sources that need cleanup when request ends
 	ContextKeyFileSourcesToCleanup ContextKey = "file_sources_to_cleanup"

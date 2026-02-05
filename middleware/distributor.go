@@ -359,7 +359,28 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	common.SetContextKey(c, constant.ContextKeyChannelModelMapping, channel.GetModelMapping())
 	common.SetContextKey(c, constant.ContextKeyChannelStatusCodeMapping, channel.GetStatusCodeMapping())
 
-	key, index, newAPIError := channel.GetNextEnabledKey()
+	var key string
+	var index int
+	var newAPIError *types.NewAPIError
+
+	affinityKeyIndex := -1
+	if affinityIdx, exists := common.GetContextKey(c, constant.ContextKeyAffinityKeyIndex); exists {
+		if idx, ok := affinityIdx.(int); ok && idx >= 0 {
+			affinityKeyIndex = idx
+		}
+	}
+
+	if affinityKeyIndex >= 0 && channel.ChannelInfo.IsMultiKey {
+		key, newAPIError = channel.GetKeyByIndex(affinityKeyIndex)
+		if newAPIError != nil {
+			key, index, newAPIError = channel.GetNextEnabledKey()
+		} else {
+			index = affinityKeyIndex
+		}
+	} else {
+		key, index, newAPIError = channel.GetNextEnabledKey()
+	}
+
 	if newAPIError != nil {
 		return newAPIError
 	}
