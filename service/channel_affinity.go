@@ -25,26 +25,35 @@ func getAffinityRedisKey(group, modelName, affinityHash string) string {
 	return fmt.Sprintf("affinity:%s:%s:%s", group, hex.EncodeToString(modelHash[:8]), affinityHash)
 }
 
-func GetAffinityChannelId(group, modelName, affinityHash string) (int, bool) {
+func GetAffinityChannelId(group, modelName, affinityHash string) (int, int, bool) {
 	if !common.RedisEnabled || affinityHash == "" {
-		return 0, false
+		return 0, -1, false
 	}
 
 	key := getAffinityRedisKey(group, modelName, affinityHash)
-	channelIdStr, err := common.RedisGet(key)
-	if err != nil || channelIdStr == "" {
-		return 0, false
+	valueStr, err := common.RedisGet(key)
+	if err != nil || valueStr == "" {
+		return 0, -1, false
 	}
 
-	channelId, err := strconv.Atoi(channelIdStr)
+	// Parse format: "channelId" or "channelId:keyIndex"
+	parts := strings.Split(valueStr, ":")
+	channelId, err := strconv.Atoi(parts[0])
 	if err != nil {
-		return 0, false
+		return 0, -1, false
 	}
 
-	return channelId, true
+	keyIndex := -1
+	if len(parts) >= 2 {
+		if idx, err := strconv.Atoi(parts[1]); err == nil {
+			keyIndex = idx
+		}
+	}
+
+	return channelId, keyIndex, true
 }
 
-func SetAffinityChannelId(group, modelName, affinityHash string, channelId int) {
+func SetAffinityChannelId(group, modelName, affinityHash string, channelId int, keyIndex int) {
 	if !common.RedisEnabled || affinityHash == "" {
 		return
 	}
@@ -55,7 +64,11 @@ func SetAffinityChannelId(group, modelName, affinityHash string, channelId int) 
 	}
 
 	key := getAffinityRedisKey(group, modelName, affinityHash)
-	_ = common.RedisSet(key, strconv.Itoa(channelId), time.Duration(ttl)*time.Second)
+	value := strconv.Itoa(channelId)
+	if keyIndex >= 0 {
+		value = fmt.Sprintf("%d:%d", channelId, keyIndex)
+	}
+	_ = common.RedisSet(key, value, time.Duration(ttl)*time.Second)
 }
 
 func ValidateAffinityChannel(channelId int, group, modelName string) *model.Channel {
@@ -191,7 +204,12 @@ func RecordChannelAffinity(c *gin.Context, initialChannelID int) {
 		return
 	}
 
-	go SetAffinityChannelId(group, modelName, affinityHash, successChannelID)
+	keyIndex := -1
+	if common.GetContextKeyBool(c, constant.ContextKeyChannelIsMultiKey) {
+		keyIndex = common.GetContextKeyInt(c, constant.ContextKeyChannelMultiKeyIndex)
+	}
+
+	go SetAffinityChannelId(group, modelName, affinityHash, successChannelID, keyIndex)
 }
 
 // ObserveChannelAffinityUsageCacheFromContext is a stub for main branch compatibility.

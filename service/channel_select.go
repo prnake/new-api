@@ -96,11 +96,14 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			}
 		}
 
-		if channelId, found := GetAffinityChannelId(effectiveGroup, param.ModelName, affinityHash); found {
+		if channelId, keyIndex, found := GetAffinityChannelId(effectiveGroup, param.ModelName, affinityHash); found {
 			affinityChannel := ValidateAffinityChannel(channelId, effectiveGroup, param.ModelName)
 			if affinityChannel != nil {
-				logger.LogDebug(param.Ctx, "Session affinity hit: group=%s, model=%s, channelId=%d", effectiveGroup, param.ModelName, channelId)
+				logger.LogDebug(param.Ctx, "Session affinity hit: group=%s, model=%s, channelId=%d, keyIndex=%d", effectiveGroup, param.ModelName, channelId, keyIndex)
 				common.SetContextKey(param.Ctx, constant.ContextKeyAffinityHit, true)
+				if keyIndex >= 0 {
+					common.SetContextKey(param.Ctx, constant.ContextKeyAffinityKeyIndex, keyIndex)
+				}
 				if selectGroup == "auto" {
 					common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroup, effectiveGroup)
 				}
