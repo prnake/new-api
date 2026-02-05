@@ -68,6 +68,11 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 		adminInfo["local_count_tokens"] = isLocalCountTokens
 	}
 
+	affinityHit := common.GetContextKeyBool(ctx, constant.ContextKeyAffinityHit)
+	if affinityHit {
+		adminInfo["affinity_hit"] = true
+	}
+
 	other["admin_info"] = adminInfo
 	appendRequestPath(ctx, relayInfo, other)
 	return other

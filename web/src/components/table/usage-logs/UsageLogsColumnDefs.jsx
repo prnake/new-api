@@ -255,12 +255,16 @@ export const getLogsColumns = ({
       render: (text, record, index) => {
         let isMultiKey = false;
         let multiKeyIndex = -1;
+        let affinityHit = false;
         let other = getLogOther(record.other);
         if (other?.admin_info) {
           let adminInfo = other.admin_info;
           if (adminInfo?.is_multi_key) {
             isMultiKey = true;
             multiKeyIndex = adminInfo.multi_key_index;
+          }
+          if (adminInfo?.affinity_hit) {
+            affinityHit = true;
           }
         }
 
@@ -281,6 +285,13 @@ export const getLogsColumns = ({
               <Tag color='white' shape='circle'>
                 {multiKeyIndex}
               </Tag>
+            )}
+            {affinityHit && (
+              <Tooltip content={t('会话亲和命中')}>
+                <Tag color='green' shape='circle'>
+                  A
+                </Tag>
+              </Tooltip>
             )}
           </Space>
         ) : null;

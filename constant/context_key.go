@@ -55,4 +55,8 @@ const (
 	ContextKeyLocalCountTokens ContextKey = "local_count_tokens"
 
 	ContextKeySystemPromptOverride ContextKey = "system_prompt_override"
+
+	/* session affinity related keys */
+	ContextKeyAffinityHash ContextKey = "affinity_hash"
+	ContextKeyAffinityHit  ContextKey = "affinity_hit"
 )

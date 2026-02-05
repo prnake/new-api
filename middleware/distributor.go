@@ -235,12 +235,14 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 			modelRequest.Model = modelName
 		}
 		c.Set("relay_mode", relayMode)
+		trySetAffinityHash(c)
 	} else if !strings.HasPrefix(c.Request.URL.Path, "/v1/audio/transcriptions") && !strings.Contains(c.Request.Header.Get("Content-Type"), "multipart/form-data") {
 		req, err := getModelFromRequest(c)
 		if err != nil {
 			return nil, false, err
 		}
 		modelRequest.Model = req.Model
+		trySetAffinityHash(c)
 	}
 	if strings.HasPrefix(c.Request.URL.Path, "/v1/realtime") {
 		//wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01
@@ -299,6 +301,7 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		modelRequest.Model = req.Model
 		modelRequest.Group = req.Group
 		common.SetContextKey(c, constant.ContextKeyTokenGroup, modelRequest.Group)
+		trySetAffinityHash(c)
 	}
 	return &modelRequest, shouldSelectChannel, nil
 }
@@ -360,6 +363,39 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 		c.Set("bot_id", channel.Other)
 	}
 	return nil
+}
+
+func trySetAffinityHash(c *gin.Context) {
+	if !common.RedisEnabled {
+		return
+	}
+
+	var hash string
+	path := c.Request.URL.Path
+
+	if strings.Contains(path, "/v1/messages") {
+		var claudeRequest dto.ClaudeRequest
+		if err := common.UnmarshalBodyReusable(c, &claudeRequest); err != nil {
+			return
+		}
+		hash = service.ComputeClaudeMessagesHash(claudeRequest.Messages)
+	} else if strings.HasPrefix(path, "/v1beta/models/") || strings.HasPrefix(path, "/v1/models/") {
+		var geminiRequest dto.GeminiChatRequest
+		if err := common.UnmarshalBodyReusable(c, &geminiRequest); err != nil {
+			return
+		}
+		hash = service.ComputeGeminiMessagesHash(geminiRequest.Contents)
+	} else {
+		var chatRequest dto.GeneralOpenAIRequest
+		if err := common.UnmarshalBodyReusable(c, &chatRequest); err != nil {
+			return
+		}
+		hash = service.ComputeOpenAIMessagesHash(chatRequest.Messages)
+	}
+
+	if hash != "" {
+		common.SetContextKey(c, constant.ContextKeyAffinityHash, hash)
+	}
 }
 
 // extractModelNameFromGeminiPath 从 Gemini API URL 路径中提取模型名

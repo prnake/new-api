@@ -86,6 +86,30 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	selectGroup := param.TokenGroup
 	userGroup := common.GetContextKeyString(param.Ctx, constant.ContextKeyUserGroup)
 
+	affinityHash := common.GetContextKeyString(param.Ctx, constant.ContextKeyAffinityHash)
+	if param.GetRetry() == 0 && affinityHash != "" {
+		effectiveGroup := selectGroup
+		if effectiveGroup == "auto" && len(setting.GetAutoGroups()) > 0 {
+			autoGroups := GetUserAutoGroup(userGroup)
+			if len(autoGroups) > 0 {
+				effectiveGroup = autoGroups[0]
+			}
+		}
+
+		if channelId, found := GetAffinityChannelId(effectiveGroup, param.ModelName, affinityHash); found {
+			affinityChannel := ValidateAffinityChannel(channelId, effectiveGroup, param.ModelName)
+			if affinityChannel != nil {
+				logger.LogDebug(param.Ctx, "Session affinity hit: group=%s, model=%s, channelId=%d", effectiveGroup, param.ModelName, channelId)
+				common.SetContextKey(param.Ctx, constant.ContextKeyAffinityHit, true)
+				if selectGroup == "auto" {
+					common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroup, effectiveGroup)
+				}
+				return affinityChannel, effectiveGroup, nil
+			}
+			logger.LogDebug(param.Ctx, "Session affinity channel invalid, fallback to normal selection")
+		}
+	}
+
 	if param.TokenGroup == "auto" {
 		if len(setting.GetAutoGroups()) == 0 {
 			return nil, selectGroup, errors.New("auto groups is not enabled")
@@ -158,5 +182,10 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			return nil, param.TokenGroup, err
 		}
 	}
+
+	if channel != nil && affinityHash != "" && param.GetRetry() == 0 {
+		go SetAffinityChannelId(selectGroup, param.ModelName, affinityHash, channel.Id)
+	}
+
 	return channel, selectGroup, nil
 }

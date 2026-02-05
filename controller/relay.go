@@ -377,6 +377,10 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 			adminInfo["is_multi_key"] = true
 			adminInfo["multi_key_index"] = common.GetContextKeyInt(c, constant.ContextKeyChannelMultiKeyIndex)
 		}
+		affinityHit := common.GetContextKeyBool(c, constant.ContextKeyAffinityHit)
+		if affinityHit {
+			adminInfo["affinity_hit"] = true
+		}
 		other["admin_info"] = adminInfo
 		model.RecordErrorLog(c, userId, channelId, modelName, tokenName, err.MaskSensitiveError(), tokenId, 0, false, userGroup, other)
 	}
