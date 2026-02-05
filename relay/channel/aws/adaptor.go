@@ -1,7 +1,6 @@
 package aws
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -101,16 +100,8 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 		if info.ChannelBaseUrl == "" {
 			return "", errors.New("bedrock proxy base url is empty")
 		}
-		model := info.UpstreamModelName
-		if model == "" {
-			model = info.OriginModelName
-		}
-		baseURL := strings.TrimRight(info.ChannelBaseUrl, "/")
-		suffix := "invoke"
-		if info.IsStream {
-			suffix = "invoke-with-response-stream"
-		}
-		return fmt.Sprintf("%s/model/%s/%s", baseURL, model, suffix), nil
+		// Bedrock Proxy 模式使用 AWS SDK 的 BaseEndpoint，URL 由 SDK 自动构造
+		return "", nil
 	}
 	if info.ChannelOtherSettings.AwsKeyType == dto.AwsKeyTypeApiKey {
 		awsModelId := getAwsModelID(info.UpstreamModelName)
@@ -171,24 +162,12 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
 	if shouldUseBedrockProxy(info) {
 		a.ClientMode = ClientModeBedrockProxy
-		if !a.IsNova {
-			requestHeader := http.Header{}
-			_ = a.SetupRequestHeader(c, &requestHeader, info)
-			awsClaudeReq, err := formatRequest(requestBody, requestHeader)
-			if err != nil {
-				return nil, err
-			}
-			requestBytes, err := buildAwsRequestBody(c, info, awsClaudeReq)
-			if err != nil {
-				return nil, err
-			}
-			requestBody = bytes.NewBuffer(requestBytes)
-		}
-		return channel.DoApiRequest(a, c, info, requestBody)
 	}
+
 	if a.ClientMode == ClientModeApiKey {
 		return channel.DoApiRequest(a, c, info, requestBody)
 	} else {
+		// ClientModeAKSK 和 ClientModeBedrockProxy 都走 AWS SDK 路径
 		result, err := doAwsClientRequest(c, info, a, requestBody)
 		if err != nil {
 			return result, err
@@ -249,18 +228,11 @@ func addAnthropicBetaToBody(bodyBytes []byte, anthropicBeta string) []byte {
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
-	if a.ClientMode == ClientModeBedrockProxy {
-		if info.IsStream {
-			err, usage := awsStreamHandler(c, info, a, resp)
-			return usage, err
-		}
-		err, usage := awsHandler(c, info, a, resp)
-		return usage, err
-	}
 	if a.ClientMode == ClientModeApiKey {
 		claudeAdaptor := claude.Adaptor{}
 		usage, err = claudeAdaptor.DoResponse(c, resp, info)
 	} else {
+		// ClientModeAKSK 和 ClientModeBedrockProxy 都走 AWS SDK 响应处理路径
 		if a.IsNova {
 			err, usage = handleNovaRequest(c, info, a)
 		} else {

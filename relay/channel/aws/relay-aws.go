@@ -46,7 +46,7 @@ func newAwsInvokeContext() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), time.Duration(common.RelayTimeout)*time.Second)
 }
 
-func newAwsClient(c *gin.Context, info *relaycommon.RelayInfo) (*bedrockruntime.Client, string, bool, error) {
+func newAwsClient(c *gin.Context, info *relaycommon.RelayInfo, isBedrockProxy bool) (*bedrockruntime.Client, string, bool, error) {
 	var (
 		httpClient *http.Client
 		err        error
@@ -58,6 +58,21 @@ func newAwsClient(c *gin.Context, info *relaycommon.RelayInfo) (*bedrockruntime.
 		}
 	} else {
 		httpClient = service.GetHttpClient()
+	}
+
+	// Bedrock Proxy 模式：使用自定义 endpoint
+	if isBedrockProxy {
+		if info.ChannelBaseUrl == "" {
+			return nil, "", false, errors.New("bedrock proxy base url is empty")
+		}
+		baseEndpoint := strings.TrimRight(info.ChannelBaseUrl, "/")
+		client := bedrockruntime.New(bedrockruntime.Options{
+			Region:                  "us-east-1", // Bedrock Proxy 模式下 region 不重要，但需要设置
+			BaseEndpoint:            aws.String(baseEndpoint),
+			BearerAuthTokenProvider: bearer.StaticTokenProvider{Token: bearer.Token{Value: info.ApiKey}},
+			HTTPClient:              httpClient,
+		})
+		return client, "", false, nil
 	}
 
 	awsSecret := strings.Split(info.ApiKey, "|")
@@ -108,7 +123,8 @@ func newAwsClient(c *gin.Context, info *relaycommon.RelayInfo) (*bedrockruntime.
 }
 
 func doAwsClientRequest(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor, requestBody io.Reader) (any, error) {
-	awsCli, modelPrefix, hasCustomPrefix, err := newAwsClient(c, info)
+	isBedrockProxy := a.ClientMode == ClientModeBedrockProxy
+	awsCli, modelPrefix, hasCustomPrefix, err := newAwsClient(c, info, isBedrockProxy)
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeChannelAwsClientError)
 	}
@@ -116,17 +132,26 @@ func doAwsClientRequest(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor,
 	a.ModelPrefix = modelPrefix
 
 	// 获取对应的AWS模型ID
-	awsModelId := getAwsModelID(info.UpstreamModelName)
-
-	if hasCustomPrefix {
-		// 如果配置了自定义prefix（4个参数格式），直接使用
-		awsModelId = modelPrefix + "." + awsModelId
+	var awsModelId string
+	if isBedrockProxy {
+		// Bedrock Proxy 模式：直接使用上游模型名称，不做前缀处理
+		awsModelId = info.UpstreamModelName
+		if awsModelId == "" {
+			awsModelId = info.OriginModelName
+		}
 	} else {
-		// 否则，从region推导并检查模型是否支持跨区域
-		awsRegionPrefix := getAwsRegionPrefix(awsCli.Options().Region)
-		canCrossRegion := awsModelCanCrossRegion(awsModelId, awsRegionPrefix)
-		if canCrossRegion {
-			awsModelId = awsModelCrossRegion(awsModelId, awsRegionPrefix, modelPrefix)
+		awsModelId = getAwsModelID(info.UpstreamModelName)
+
+		if hasCustomPrefix {
+			// 如果配置了自定义prefix（4个参数格式），直接使用
+			awsModelId = modelPrefix + "." + awsModelId
+		} else {
+			// 否则，从region推导并检查模型是否支持跨区域
+			awsRegionPrefix := getAwsRegionPrefix(awsCli.Options().Region)
+			canCrossRegion := awsModelCanCrossRegion(awsModelId, awsRegionPrefix)
+			if canCrossRegion {
+				awsModelId = awsModelCrossRegion(awsModelId, awsRegionPrefix, modelPrefix)
+			}
 		}
 	}
 
@@ -242,41 +267,6 @@ func getAwsModelID(requestModel string) string {
 }
 
 func awsHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor, resp *http.Response) (*types.NewAPIError, *dto.Usage) {
-	if a.ClientMode == ClientModeBedrockProxy {
-		if resp == nil {
-			return types.NewError(errors.New("resp is nil"), types.ErrorCodeBadResponseBody), nil
-		}
-		defer service.CloseResponseBodyGracefully(resp)
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return types.NewError(err, types.ErrorCodeBadResponseBody), nil
-		}
-
-		usage := &dto.Usage{}
-		var claudeResponse dto.ClaudeResponse
-		if err := common.Unmarshal(body, &claudeResponse); err == nil {
-			claudeInfo := &claude.ClaudeResponseInfo{
-				ResponseId:   helper.GetResponseID(c),
-				Created:      common.GetTimestamp(),
-				Model:        info.UpstreamModelName,
-				ResponseText: strings.Builder{},
-				Usage:        &dto.Usage{},
-			}
-			claude.FormatClaudeResponseInfo(claude.RequestModeMessage, &claudeResponse, nil, claudeInfo)
-			usage = claudeInfo.Usage
-		} else {
-			usage.PromptTokens = info.GetEstimatePromptTokens()
-		}
-
-		writeBedrockProxyHeaders(c, resp.Header, len(body))
-		c.Writer.WriteHeader(resp.StatusCode)
-		_, _ = c.Writer.Write(body)
-		c.Writer.Flush()
-
-		return nil, usage
-	}
-
 	ctx, cancel := newAwsInvokeContext()
 	defer cancel()
 
@@ -307,21 +297,6 @@ func awsHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor, resp *h
 }
 
 func awsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor, resp *http.Response) (*types.NewAPIError, *dto.Usage) {
-	if a.ClientMode == ClientModeBedrockProxy {
-		if resp == nil {
-			return types.NewError(errors.New("resp is nil"), types.ErrorCodeBadResponseBody), nil
-		}
-		defer service.CloseResponseBodyGracefully(resp)
-
-		writeBedrockProxyHeaders(c, resp.Header, -1)
-		c.Writer.WriteHeader(resp.StatusCode)
-		_, _ = io.Copy(c.Writer, resp.Body)
-		c.Writer.Flush()
-
-		usage := &dto.Usage{PromptTokens: info.GetEstimatePromptTokens()}
-		return nil, usage
-	}
-
 	ctx, cancel := newAwsInvokeContext()
 	defer cancel()
 
