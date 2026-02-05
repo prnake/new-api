@@ -429,6 +429,32 @@ export const getLogsColumns = ({
       },
     },
     {
+      key: COLUMN_KEYS.CACHE_CREATION,
+      title: t('缓存创建'),
+      dataIndex: 'other',
+      render: (text, record, index) => {
+        if (!(record.type === 0 || record.type === 2 || record.type === 5)) {
+          return <></>;
+        }
+        let other = getLogOther(record.other);
+        let cacheCreation = other?.cache_creation_tokens || 0;
+        return cacheCreation > 0 ? <span>{cacheCreation}</span> : <></>;
+      },
+    },
+    {
+      key: COLUMN_KEYS.CACHE,
+      title: t('缓存'),
+      dataIndex: 'other',
+      render: (text, record, index) => {
+        if (!(record.type === 0 || record.type === 2 || record.type === 5)) {
+          return <></>;
+        }
+        let other = getLogOther(record.other);
+        let cacheTokens = other?.cache_tokens || 0;
+        return cacheTokens > 0 ? <span>{cacheTokens}</span> : <></>;
+      },
+    },
+    {
       key: COLUMN_KEYS.PROMPT,
       title: t('输入'),
       dataIndex: 'prompt_tokens',
