@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -81,6 +82,16 @@ func InitEnv() {
 	DebugEnabled = os.Getenv("DEBUG") == "true"
 	MemoryCacheEnabled = os.Getenv("MEMORY_CACHE_ENABLED") == "true"
 	IsMasterNode = os.Getenv("NODE_TYPE") != "slave"
+	TLSInsecureSkipVerify = GetEnvOrDefaultBool("TLS_INSECURE_SKIP_VERIFY", false)
+	if TLSInsecureSkipVerify {
+		if tr, ok := http.DefaultTransport.(*http.Transport); ok && tr != nil {
+			if tr.TLSClientConfig != nil {
+				tr.TLSClientConfig.InsecureSkipVerify = true
+			} else {
+				tr.TLSClientConfig = InsecureTLSConfig
+			}
+		}
+	}
 
 	// Parse requestInterval and set RequestInterval
 	requestInterval, _ = strconv.Atoi(os.Getenv("POLLING_INTERVAL"))
@@ -126,7 +137,6 @@ func initConstantEnv() {
 	constant.GetMediaTokenNotStream = GetEnvOrDefaultBool("GET_MEDIA_TOKEN_NOT_STREAM", false)
 	constant.UpdateTask = GetEnvOrDefaultBool("UPDATE_TASK", true)
 	constant.AzureDefaultAPIVersion = GetEnvOrDefaultString("AZURE_DEFAULT_API_VERSION", "2025-04-01-preview")
-	constant.GeminiVisionMaxImageNum = GetEnvOrDefault("GEMINI_VISION_MAX_IMAGE_NUM", 16)
 	constant.NotifyLimitCount = GetEnvOrDefault("NOTIFY_LIMIT_COUNT", 2)
 	constant.NotificationLimitDurationMinute = GetEnvOrDefault("NOTIFICATION_LIMIT_DURATION_MINUTE", 10)
 	// GenerateDefaultToken 是否生成初始令牌，默认关闭。
@@ -149,4 +159,17 @@ func initConstantEnv() {
 		}
 		constant.TaskPricePatches = taskPricePatches
 	}
+
+	// Initialize trusted redirect domains for URL validation
+	trustedDomainsStr := GetEnvOrDefaultString("TRUSTED_REDIRECT_DOMAINS", "")
+	var trustedDomains []string
+	domains := strings.Split(trustedDomainsStr, ",")
+	for _, domain := range domains {
+		trimmedDomain := strings.TrimSpace(domain)
+		if trimmedDomain != "" {
+			// Normalize domain to lowercase
+			trustedDomains = append(trustedDomains, strings.ToLower(trimmedDomain))
+		}
+	}
+	constant.TrustedRedirectDomains = trustedDomains
 }

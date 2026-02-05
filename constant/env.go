@@ -11,7 +11,6 @@ var GetMediaTokenNotStream bool
 var UpdateTask bool
 var MaxRequestBodyMB int
 var AzureDefaultAPIVersion string
-var GeminiVisionMaxImageNum int
 var NotifyLimitCount int
 var NotificationLimitDurationMinute int
 var GenerateDefaultToken bool
@@ -21,3 +20,7 @@ var SessionAffinityTTL int
 
 // temporary variable for sora patch, will be removed in future
 var TaskPricePatches []string
+
+// TrustedRedirectDomains is a list of trusted domains for redirect URL validation.
+// Domains support subdomain matching (e.g., "example.com" matches "sub.example.com").
+var TrustedRedirectDomains []string

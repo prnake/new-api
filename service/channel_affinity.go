@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/gin-gonic/gin"
 )
 
 const (
@@ -140,4 +141,107 @@ func ComputeGeminiMessagesHash(contents []dto.GeminiChatContent) string {
 
 	hash := md5.Sum([]byte(builder.String()))
 	return hex.EncodeToString(hash[:])
+}
+
+// ShouldSkipRetryAfterChannelAffinityFailure is a stub for compatibility with main branch code.
+// In deploy branch, we use the simpler affinity_hit logic and don't need skip retry.
+func ShouldSkipRetryAfterChannelAffinityFailure(c *gin.Context) bool {
+	return false
+}
+
+// GetPreferredChannelByAffinity is a stub for main branch compatibility.
+// Deploy branch uses a different affinity mechanism via GetAffinityChannelId.
+func GetPreferredChannelByAffinity(c *gin.Context, modelName string, usingGroup string) (int, bool) {
+	return 0, false
+}
+
+// MarkChannelAffinityUsed is a stub for main branch compatibility.
+func MarkChannelAffinityUsed(c *gin.Context, selectedGroup string, channelID int) {
+}
+
+// RecordChannelAffinity is a stub for main branch compatibility.
+func RecordChannelAffinity(c *gin.Context, channelID int) {
+}
+
+// ObserveChannelAffinityUsageCacheFromContext is a stub for main branch compatibility.
+func ObserveChannelAffinityUsageCacheFromContext(c *gin.Context, usage *dto.Usage) {
+}
+
+// ChannelAffinityCacheStats is a stub type for main branch compatibility.
+type ChannelAffinityCacheStats struct {
+	Enabled       bool           `json:"enabled"`
+	Total         int            `json:"total"`
+	Unknown       int            `json:"unknown"`
+	ByRuleName    map[string]int `json:"by_rule_name"`
+	CacheCapacity int            `json:"cache_capacity"`
+	CacheAlgo     string         `json:"cache_algo"`
+}
+
+// GetChannelAffinityCacheStats is a stub for main branch compatibility.
+func GetChannelAffinityCacheStats() ChannelAffinityCacheStats {
+	return ChannelAffinityCacheStats{
+		Enabled:    false,
+		Total:      0,
+		Unknown:    0,
+		ByRuleName: map[string]int{},
+	}
+}
+
+// ClearChannelAffinityCacheAll is a stub for main branch compatibility.
+func ClearChannelAffinityCacheAll() int {
+	return 0
+}
+
+// ClearChannelAffinityCacheByRuleName is a stub for main branch compatibility.
+func ClearChannelAffinityCacheByRuleName(ruleName string) (int, error) {
+	return 0, nil
+}
+
+// ChannelAffinityUsageCacheStats is a stub type for main branch compatibility.
+type ChannelAffinityUsageCacheStats struct {
+	RuleName             string `json:"rule_name"`
+	UsingGroup           string `json:"using_group"`
+	KeyFingerprint       string `json:"key_fp"`
+	Hit                  int64  `json:"hit"`
+	Total                int64  `json:"total"`
+	WindowSeconds        int64  `json:"window_seconds"`
+	PromptTokens         int64  `json:"prompt_tokens"`
+	CompletionTokens     int64  `json:"completion_tokens"`
+	TotalTokens          int64  `json:"total_tokens"`
+	CachedTokens         int64  `json:"cached_tokens"`
+	PromptCacheHitTokens int64  `json:"prompt_cache_hit_tokens"`
+	LastSeenAt           int64  `json:"last_seen_at"`
+}
+
+// GetChannelAffinityUsageCacheStats is a stub for main branch compatibility.
+func GetChannelAffinityUsageCacheStats(ruleName, usingGroup, keyFp string) ChannelAffinityUsageCacheStats {
+	return ChannelAffinityUsageCacheStats{
+		RuleName:       ruleName,
+		UsingGroup:     usingGroup,
+		KeyFingerprint: keyFp,
+	}
+}
+
+func AppendChannelAffinityAdminInfo(c *gin.Context, adminInfo map[string]interface{}) {
+	if c == nil || adminInfo == nil {
+		return
+	}
+	affinityHit := common.GetContextKeyBool(c, constant.ContextKeyAffinityHit)
+	if !affinityHit {
+		return
+	}
+	affinityHash := common.GetContextKeyString(c, constant.ContextKeyAffinityHash)
+	info := map[string]interface{}{
+		"reason":    "session_affinity",
+		"hit":       true,
+		"hash_hint": truncateHash(affinityHash),
+	}
+	adminInfo["channel_affinity"] = info
+}
+
+func truncateHash(hash string) string {
+	if len(hash) <= 8 {
+		return hash
+	}
+	return hash[:8]
 }
