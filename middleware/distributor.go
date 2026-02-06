@@ -80,6 +80,13 @@ func Distribute() func(c *gin.Context) {
 				}
 				var selectGroup string
 				usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+
+				// Store anthropic-beta header in context for downstream filtering
+				anthropicBeta := c.Request.Header.Get("anthropic-beta")
+				if anthropicBeta != "" {
+					common.SetContextKey(c, constant.ContextKeyAnthropicBeta, anthropicBeta)
+				}
+
 				// check path is /pg/chat/completions
 				if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") {
 					playgroundRequest := &dto.PlayGroundRequest{}
@@ -100,7 +107,8 @@ func Distribute() func(c *gin.Context) {
 
 				if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
 					preferred, err := model.CacheGetChannel(preferredChannelID)
-					if err == nil && preferred != nil && preferred.Status == common.ChannelStatusEnabled {
+					requestBetas := model.ParseAnthropicBeta(anthropicBeta)
+					if err == nil && preferred != nil && preferred.Status == common.ChannelStatusEnabled && preferred.IsAcceptAnthropicBeta(requestBetas) {
 						if usingGroup == "auto" {
 							userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
 							autoGroups := service.GetUserAutoGroup(userGroup)
@@ -122,11 +130,13 @@ func Distribute() func(c *gin.Context) {
 				}
 
 				if channel == nil {
+					requestBetas := model.ParseAnthropicBeta(anthropicBeta)
 					channel, selectGroup, err = service.CacheGetRandomSatisfiedChannel(&service.RetryParam{
-						Ctx:        c,
-						ModelName:  modelRequest.Model,
-						TokenGroup: usingGroup,
-						Retry:      common.GetPointer(0),
+						Ctx:          c,
+						ModelName:    modelRequest.Model,
+						TokenGroup:   usingGroup,
+						Retry:        common.GetPointer(0),
+						RequestBetas: requestBetas,
 					})
 					if err != nil {
 						showGroup := usingGroup

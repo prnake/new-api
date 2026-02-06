@@ -170,6 +170,7 @@ const EditChannelModal = (props) => {
     allow_service_tier: false,
     disable_store: false, // false = 允许透传（默认开启）
     allow_safety_identifier: false,
+    allowed_anthropic_beta: [],
   };
   const [batch, setBatch] = useState(false);
   const [multiToSingle, setMultiToSingle] = useState(false);
@@ -633,6 +634,8 @@ const EditChannelModal = (props) => {
           data.disable_store = parsedSettings.disable_store || false;
           data.allow_safety_identifier =
             parsedSettings.allow_safety_identifier || false;
+          data.allowed_anthropic_beta =
+            parsedSettings.allowed_anthropic_beta || [];
         } catch (error) {
           console.error('解析其他设置失败:', error);
           data.azure_responses_version = '';
@@ -643,6 +646,7 @@ const EditChannelModal = (props) => {
           data.allow_service_tier = false;
           data.disable_store = false;
           data.allow_safety_identifier = false;
+          data.allowed_anthropic_beta = [];
         }
       } else {
         // 兼容历史数据：老渠道没有 settings 时，默认按 json 展示
@@ -652,6 +656,7 @@ const EditChannelModal = (props) => {
         data.allow_service_tier = false;
         data.disable_store = false;
         data.allow_safety_identifier = false;
+        data.allowed_anthropic_beta = [];
       }
 
       if (
@@ -1396,6 +1401,11 @@ const EditChannelModal = (props) => {
       }
     }
 
+    // type === 14 (Claude), 33 (AWS), 41 (Vertex): 保存 allowed_anthropic_beta
+    if (localInputs.type === 14 || localInputs.type === 33 || localInputs.type === 41) {
+      settings.allowed_anthropic_beta = localInputs.allowed_anthropic_beta || [];
+    }
+
     localInputs.settings = JSON.stringify(settings);
 
     // 清理不需要发送到后端的字段
@@ -1414,6 +1424,7 @@ const EditChannelModal = (props) => {
     delete localInputs.allow_service_tier;
     delete localInputs.disable_store;
     delete localInputs.allow_safety_identifier;
+    delete localInputs.allowed_anthropic_beta;
 
     let res;
     localInputs.auto_ban = localInputs.auto_ban ? 1 : 0;
@@ -3280,6 +3291,22 @@ const EditChannelModal = (props) => {
                           extraText={t(
                             'service_tier 字段用于指定服务层级，允许透传可能导致实际计费高于预期。默认关闭以避免额外费用',
                           )}
+                        />
+                      </>
+                    )}
+
+                    {/* Anthropic Beta 限制 - Claude / AWS / Vertex 渠道 */}
+                    {(inputs.type === 14 || inputs.type === 33 || inputs.type === 41) && (
+                      <>
+                        <div className='mt-4 mb-2 text-sm font-medium text-gray-700'>
+                          {t('Anthropic Beta 限制')}
+                        </div>
+                        <Form.TagInput
+                          field='allowed_anthropic_beta'
+                          label={t('允许的 anthropic_beta')}
+                          placeholder={t('输入 beta 标识后按回车添加，留空则不限制')}
+                          allowDuplicates={false}
+                          showClear
                         />
                       </>
                     )}

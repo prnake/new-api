@@ -70,4 +70,6 @@ const (
 
 	// ContextKeyLanguage stores the user's language preference for i18n
 	ContextKeyLanguage ContextKey = "language"
+
+	ContextKeyAnthropicBeta ContextKey = "anthropic_beta"
 )

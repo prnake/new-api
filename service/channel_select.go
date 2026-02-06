@@ -16,6 +16,7 @@ type RetryParam struct {
 	TokenGroup   string
 	ModelName    string
 	Retry        *int
+	RequestBetas []string // parsed anthropic-beta values for filtering
 	resetNextTry bool
 }
 
@@ -98,7 +99,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 
 		if channelId, keyIndex, found := GetAffinityChannelId(effectiveGroup, param.ModelName, affinityHash); found {
 			affinityChannel := ValidateAffinityChannel(channelId, effectiveGroup, param.ModelName)
-			if affinityChannel != nil {
+			if affinityChannel != nil && affinityChannel.IsAcceptAnthropicBeta(param.RequestBetas) {
 				logger.LogDebug(param.Ctx, "Session affinity hit: group=%s, model=%s, channelId=%d, keyIndex=%d", effectiveGroup, param.ModelName, channelId, keyIndex)
 				common.SetContextKey(param.Ctx, constant.ContextKeyAffinityHit, true)
 				if keyIndex >= 0 {
@@ -142,7 +143,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			}
 			logger.LogDebug(param.Ctx, "Auto selecting group: %s, priorityRetry: %d", autoGroup, priorityRetry)
 
-			channel, _ = model.GetRandomSatisfiedChannel(autoGroup, param.ModelName, priorityRetry)
+			channel, _ = model.GetRandomSatisfiedChannel(autoGroup, param.ModelName, priorityRetry, param.RequestBetas)
 			if channel == nil {
 				// Current group has no available channel for this model, try next group
 				// 当前分组没有该模型的可用渠道，尝试下一个分组
@@ -180,7 +181,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			break
 		}
 	} else {
-		channel, err = model.GetRandomSatisfiedChannel(param.TokenGroup, param.ModelName, param.GetRetry())
+		channel, err = model.GetRandomSatisfiedChannel(param.TokenGroup, param.ModelName, param.GetRetry(), param.RequestBetas)
 		if err != nil {
 			return nil, param.TokenGroup, err
 		}
