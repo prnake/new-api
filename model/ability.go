@@ -103,7 +103,7 @@ func getChannelQuery(group string, model string, retry int) (*gorm.DB, error) {
 	return channelQuery, nil
 }
 
-func GetChannel(group string, model string, retry int) (*Channel, error) {
+func GetChannel(group string, model string, retry int, requestBetas []string) (*Channel, error) {
 	var abilities []Ability
 
 	var err error = nil
@@ -119,6 +119,21 @@ func GetChannel(group string, model string, retry int) (*Channel, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Filter by anthropic-beta compatibility if needed
+	if len(requestBetas) > 0 {
+		var filtered []Ability
+		for _, ability_ := range abilities {
+			ch := &Channel{Id: ability_.ChannelId}
+			if dbErr := DB.First(ch, "id = ?", ch.Id).Error; dbErr == nil {
+				if ch.IsAcceptAnthropicBeta(requestBetas) {
+					filtered = append(filtered, ability_)
+				}
+			}
+		}
+		abilities = filtered
+	}
+
 	channel := Channel{}
 	if len(abilities) > 0 {
 		// Randomly choose one

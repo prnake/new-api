@@ -942,6 +942,43 @@ func (channel *Channel) GetHeaderOverride() map[string]interface{} {
 	return headerOverride
 }
 
+// ParseAnthropicBeta parses a comma-separated anthropic-beta header into a slice.
+func ParseAnthropicBeta(header string) []string {
+	if header == "" {
+		return nil
+	}
+	parts := strings.Split(header, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
+// IsAcceptAnthropicBeta checks if all request betas are in the channel's allowed list.
+func (channel *Channel) IsAcceptAnthropicBeta(requestBetas []string) bool {
+	if len(requestBetas) == 0 {
+		return true
+	}
+	settings := channel.GetOtherSettings()
+	if len(settings.AllowedAnthropicBeta) == 0 {
+		return true // no restriction
+	}
+	allowedSet := make(map[string]bool, len(settings.AllowedAnthropicBeta))
+	for _, b := range settings.AllowedAnthropicBeta {
+		allowedSet[strings.TrimSpace(b)] = true
+	}
+	for _, b := range requestBetas {
+		if !allowedSet[strings.TrimSpace(b)] {
+			return false
+		}
+	}
+	return true
+}
+
 func GetChannelsByIds(ids []int) ([]*Channel, error) {
 	var channels []*Channel
 	err := DB.Where("id in (?)", ids).Find(&channels).Error
