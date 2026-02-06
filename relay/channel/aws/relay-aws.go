@@ -289,7 +289,7 @@ func awsHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor, resp *h
 		c.Writer.Header().Set("Content-Type", *awsResp.ContentType)
 	}
 
-	handlerErr := claude.HandleClaudeResponseData(c, info, claudeInfo, nil, awsResp.Body, claude.RequestModeMessage)
+	handlerErr := claude.HandleClaudeResponseData(c, info, claudeInfo, nil, awsResp.Body)
 	if handlerErr != nil {
 		return handlerErr, nil
 	}
@@ -320,7 +320,7 @@ func awsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor, r
 		switch v := event.(type) {
 		case *bedrockruntimeTypes.ResponseStreamMemberChunk:
 			info.SetFirstResponseTime()
-			respErr := claude.HandleStreamResponseData(c, info, claudeInfo, string(v.Value.Bytes), claude.RequestModeMessage)
+			respErr := claude.HandleStreamResponseData(c, info, claudeInfo, string(v.Value.Bytes))
 			if respErr != nil {
 				return respErr, nil
 			}
@@ -333,7 +333,7 @@ func awsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor, r
 		}
 	}
 
-	claude.HandleStreamFinalResponse(c, info, claudeInfo, claude.RequestModeMessage)
+	claude.HandleStreamFinalResponse(c, info, claudeInfo)
 	return nil, claudeInfo.Usage
 }
 
