@@ -110,7 +110,9 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 				}
 				return affinityChannel, effectiveGroup, nil
 			}
-			logger.LogDebug(param.Ctx, "Session affinity channel invalid, fallback to normal selection")
+			// Affinity channel is invalid or doesn't support requested betas, clear stale cache
+			ClearAffinityChannelId(effectiveGroup, param.ModelName, affinityHash)
+			logger.LogDebug(param.Ctx, "Session affinity channel invalid, cleared stale cache, fallback to normal selection")
 		}
 	}
 

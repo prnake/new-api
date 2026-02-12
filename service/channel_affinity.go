@@ -71,6 +71,15 @@ func SetAffinityChannelId(group, modelName, affinityHash string, channelId int, 
 	_ = common.RedisSet(key, value, time.Duration(ttl)*time.Second)
 }
 
+func ClearAffinityChannelId(group, modelName, affinityHash string) {
+	if !common.RedisEnabled || affinityHash == "" {
+		return
+	}
+
+	key := getAffinityRedisKey(group, modelName, affinityHash)
+	_ = common.RedisDel(key)
+}
+
 func ValidateAffinityChannel(channelId int, group, modelName string) *model.Channel {
 	channel, err := model.CacheGetChannel(channelId)
 	if err != nil || channel == nil {
@@ -154,6 +163,40 @@ func ComputeGeminiMessagesHash(contents []dto.GeminiChatContent) string {
 
 	hash := md5.Sum([]byte(builder.String()))
 	return hex.EncodeToString(hash[:])
+}
+
+// ClearAffinityOnFailure clears the session affinity cache entry when a request
+// fails (e.g., 429 rate limit). This prevents subsequent new requests from being
+// directed to the same channel/key via stale affinity cache.
+func ClearAffinityOnFailure(c *gin.Context) {
+	if c == nil {
+		return
+	}
+	if !common.GetContextKeyBool(c, constant.ContextKeyAffinityHit) {
+		return
+	}
+
+	affinityHash := common.GetContextKeyString(c, constant.ContextKeyAffinityHash)
+	if affinityHash == "" {
+		return
+	}
+
+	group := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+	if group == "auto" {
+		group = common.GetContextKeyString(c, constant.ContextKeyAutoGroup)
+	}
+	if group == "" || group == "auto" {
+		return
+	}
+
+	modelName := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
+	if modelName == "" {
+		return
+	}
+
+	ClearAffinityChannelId(group, modelName, affinityHash)
+	// Mark as cleared so we don't try to clear again on subsequent retries
+	common.SetContextKey(c, constant.ContextKeyAffinityHit, false)
 }
 
 // ShouldSkipRetryAfterChannelAffinityFailure is a stub for compatibility with main branch code.
