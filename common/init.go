@@ -146,6 +146,7 @@ func initConstantEnv() {
 	// 任务轮询时查询的最大数量
 	constant.TaskQueryLimit = GetEnvOrDefault("TASK_QUERY_LIMIT", 1000)
 	constant.SessionAffinityTTL = GetEnvOrDefault("SESSION_AFFINITY_TTL", 900)
+	constant.ClaudeAutoCache = GetEnvOrDefaultBool("CLAUDE_AUTO_CACHE", true)
 
 	soraPatchStr := GetEnvOrDefaultString("TASK_PRICE_PATCH", "")
 	if soraPatchStr != "" {
