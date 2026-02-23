@@ -257,7 +257,12 @@ func PostClaudeConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, 
 	cacheCreationTokens5m := usage.ClaudeCacheCreation5mTokens
 	cacheCreationTokens1h := usage.ClaudeCacheCreation1hTokens
 
-	if relayInfo.ChannelType == constant.ChannelTypeOpenRouter {
+	isClaudeModel := strings.HasPrefix(relayInfo.UpstreamModelName, "claude-")
+	isClaudeUsageSemantic := relayInfo.ChannelType == constant.ChannelTypeAnthropic ||
+		relayInfo.ChannelType == constant.ChannelTypeAws ||
+		(relayInfo.ChannelType == constant.ChannelTypeVertexAi && isClaudeModel)
+
+	if !isClaudeUsageSemantic && promptTokens > cacheTokens {
 		promptTokens -= cacheTokens
 		isUsingCustomSettings := relayInfo.PriceData.UsePrice || hasCustomModelRatio(modelName, relayInfo.PriceData.ModelRatio)
 		if cacheCreationTokens == 0 && relayInfo.PriceData.CacheCreationRatio != 1 && usage.Cost != 0 && !isUsingCustomSettings {

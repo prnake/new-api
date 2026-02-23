@@ -334,7 +334,10 @@ func postConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage 
 
 	var audioInputQuota decimal.Decimal
 	var audioInputPrice float64
-	isClaudeUsageSemantic := relayInfo.ChannelType == constant.ChannelTypeAnthropic
+	isClaudeModel := strings.HasPrefix(relayInfo.UpstreamModelName, "claude-")
+	isClaudeUsageSemantic := relayInfo.ChannelType == constant.ChannelTypeAnthropic ||
+		relayInfo.ChannelType == constant.ChannelTypeAws ||
+		(relayInfo.ChannelType == constant.ChannelTypeVertexAi && isClaudeModel)
 	if !relayInfo.PriceData.UsePrice {
 		baseTokens := dPromptTokens
 		// 减去 cached tokens
