@@ -222,6 +222,27 @@ func createClaudeFileSource(data string) *types.FileSource {
 	return types.NewBase64FileSource(data, "")
 }
 
+// CleanNullFieldsInMessages removes null-valued fields from content blocks in messages.
+// Vertex Anthropic may return fields like "citations": null, "caller": null in content blocks,
+// which are not accepted by all providers.
+func (c *ClaudeRequest) CleanNullFieldsInMessages() {
+	for i := range c.Messages {
+		content, ok := c.Messages[i].Content.([]any)
+		if !ok {
+			continue
+		}
+		for _, item := range content {
+			if contentMap, ok := item.(map[string]any); ok {
+				for key, value := range contentMap {
+					if value == nil {
+						delete(contentMap, key)
+					}
+				}
+			}
+		}
+	}
+}
+
 func (c *ClaudeRequest) GetTokenCountMeta() *types.TokenCountMeta {
 	var tokenCountMeta = types.TokenCountMeta{
 		TokenType: types.TokenTypeTokenizer,
