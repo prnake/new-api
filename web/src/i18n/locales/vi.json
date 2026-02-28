@@ -2274,6 +2274,8 @@
     "自动生成": "Tự động tạo",
     "自动禁用": "Tự động vô hiệu hóa",
     "自动禁用关键字": "Từ khóa tự động vô hiệu hóa",
+    "不重试关键词": "Từ khóa không thử lại",
+    "当上游通道返回错误中包含这些关键词时（不区分大小写），不再重试直接返回错误": "Khi kênh thượng nguồn trả về lỗi chứa các từ khóa này (không phân biệt chữ hoa chữ thường), ngừng thử lại và trả về lỗi trực tiếp",
     "自动禁用关键词": "Từ khóa tự động vô hiệu hóa",
     "自动禁用开启": "Bật tự động vô hiệu hóa",
     "自动续费": "Tự động gia hạn",

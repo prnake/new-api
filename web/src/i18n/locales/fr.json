@@ -1965,6 +1965,8 @@
     "自动模式": "Mode automatique",
     "自动测试所有通道间隔时间": "Intervalle de test automatique pour tous les canaux",
     "自动禁用": "Désactivé automatiquement",
+    "不重试关键词": "Mots-clés sans réessai",
+    "当上游通道返回错误中包含这些关键词时（不区分大小写），不再重试直接返回错误": "Lorsque le canal en amont renvoie une erreur contenant ces mots-clés (insensible à la casse), arrêter les réessais et renvoyer l'erreur directement",
     "自动禁用关键词": "Mots-clés de désactivation automatique",
     "自动选择": "Sélection automatique",
     "自定义充值数量选项": "Options de montant de recharge personnalisées",

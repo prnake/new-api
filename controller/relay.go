@@ -325,6 +325,9 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 	if types.IsSkipRetryError(openaiErr) {
 		return false
 	}
+	if service.ShouldSkipRetryByKeyword(openaiErr) {
+		return false
+	}
 	if retryTimes <= 0 {
 		return false
 	}
@@ -604,6 +607,9 @@ func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *dto.TaskError,
 		return false
 	}
 	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
+		return false
+	}
+	if service.ShouldSkipRetryByKeywordMessage(taskErr.Message) {
 		return false
 	}
 	if retryTimes <= 0 {

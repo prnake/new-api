@@ -1949,6 +1949,8 @@
     "自动模式": "Auto Mode",
     "自动测试所有通道间隔时间": "Auto test interval for all channels",
     "自动禁用": "Auto disabled",
+    "不重试关键词": "No-retry keywords",
+    "当上游通道返回错误中包含这些关键词时（不区分大小写），不再重试直接返回错误": "When the upstream channel returns an error containing these keywords (not case-sensitive), stop retrying and return the error directly",
     "自动禁用关键词": "Automatic disable keywords",
     "自动禁用状态码": "Auto-disable status codes",
     "自动禁用状态码格式不正确": "Invalid auto-disable status code format",

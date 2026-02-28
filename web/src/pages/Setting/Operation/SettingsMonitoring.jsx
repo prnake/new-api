@@ -39,6 +39,7 @@ export default function SettingsMonitoring(props) {
     AutomaticDisableChannelEnabled: false,
     AutomaticEnableChannelEnabled: false,
     AutomaticDisableKeywords: '',
+    AutomaticNoRetryKeywords: '',
     AutomaticDisableStatusCodes: '401',
     AutomaticRetryStatusCodes:
       '100-199,300-399,401-407,409-499,500-503,505-523,525-599',
@@ -273,6 +274,18 @@ export default function SettingsMonitoring(props) {
                   autosize={{ minRows: 6, maxRows: 12 }}
                   onChange={(value) =>
                     setInputs({ ...inputs, AutomaticDisableKeywords: value })
+                  }
+                />
+                <Form.TextArea
+                  label={t('不重试关键词')}
+                  placeholder={t('一行一个，不区分大小写')}
+                  extraText={t(
+                    '当上游通道返回错误中包含这些关键词时（不区分大小写），不再重试直接返回错误',
+                  )}
+                  field={'AutomaticNoRetryKeywords'}
+                  autosize={{ minRows: 6, maxRows: 12 }}
+                  onChange={(value) =>
+                    setInputs({ ...inputs, AutomaticNoRetryKeywords: value })
                   }
                 />
               </Col>
