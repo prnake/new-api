@@ -13,6 +13,7 @@ import (
 
 func SetApiRouter(router *gin.Engine) {
 	apiRouter := router.Group("/api")
+	apiRouter.Use(middleware.RouteTag("api"))
 	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression))
 	apiRouter.Use(middleware.BodyStorageCleanup()) // 清理请求体存储
 	apiRouter.Use(middleware.GlobalAPIRateLimit())
@@ -50,7 +51,6 @@ func SetApiRouter(router *gin.Engine) {
 
 		// Universal secure verification routes
 		apiRouter.POST("/verify", middleware.UserAuth(), middleware.CriticalRateLimit(), controller.UniversalVerify)
-		apiRouter.GET("/verify/status", middleware.UserAuth(), controller.GetVerificationStatus)
 
 		userRoute := apiRouter.Group("/user")
 		{
@@ -115,6 +115,9 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.GET("/topup", controller.GetAllTopUps)
 				adminRoute.POST("/topup/complete", controller.AdminCompleteTopUp)
 				adminRoute.GET("/search", controller.SearchUsers)
+				adminRoute.GET("/:id/oauth/bindings", controller.GetUserOAuthBindingsByAdmin)
+				adminRoute.DELETE("/:id/oauth/bindings/:provider_id", controller.UnbindCustomOAuthByAdmin)
+				adminRoute.DELETE("/:id/bindings/:binding_type", controller.AdminClearUserBinding)
 				adminRoute.GET("/:id", controller.GetUser)
 				adminRoute.POST("/", controller.CreateUser)
 				adminRoute.POST("/manage", controller.ManageUser)
@@ -171,10 +174,11 @@ func SetApiRouter(router *gin.Engine) {
 			optionRoute.POST("/migrate_console_setting", controller.MigrateConsoleSetting) // 用于迁移检测的旧键，下个版本会删除
 		}
 
-		// Custom OAuth provider management (admin only)
+		// Custom OAuth provider management (root only)
 		customOAuthRoute := apiRouter.Group("/custom-oauth-provider")
 		customOAuthRoute.Use(middleware.RootAuth())
 		{
+			customOAuthRoute.POST("/discovery", controller.FetchCustomOAuthDiscovery)
 			customOAuthRoute.GET("/", controller.GetCustomOAuthProviders)
 			customOAuthRoute.GET("/:id", controller.GetCustomOAuthProvider)
 			customOAuthRoute.POST("/", controller.CreateCustomOAuthProvider)
@@ -238,7 +242,7 @@ func SetApiRouter(router *gin.Engine) {
 		tokenRoute.Use(middleware.UserAuth())
 		{
 			tokenRoute.GET("/", controller.GetAllTokens)
-			tokenRoute.GET("/search", controller.SearchTokens)
+			tokenRoute.GET("/search", middleware.SearchRateLimit(), controller.SearchTokens)
 			tokenRoute.GET("/:id", controller.GetToken)
 			tokenRoute.POST("/", controller.AddToken)
 			tokenRoute.PUT("/", controller.UpdateToken)
@@ -247,10 +251,10 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		usageRoute := apiRouter.Group("/usage")
-		usageRoute.Use(middleware.CriticalRateLimit())
+		usageRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())
 		{
 			tokenUsageRoute := usageRoute.Group("/token")
-			tokenUsageRoute.Use(middleware.TokenAuth())
+			tokenUsageRoute.Use(middleware.TokenAuthReadOnly())
 			{
 				tokenUsageRoute.GET("/", controller.GetTokenUsage)
 			}
@@ -275,15 +279,15 @@ func SetApiRouter(router *gin.Engine) {
 		logRoute.GET("/channel_affinity_usage_cache", middleware.AdminAuth(), controller.GetChannelAffinityUsageCacheStats)
 		logRoute.GET("/search", middleware.AdminAuth(), controller.SearchAllLogs)
 		logRoute.GET("/self", middleware.UserAuth(), controller.GetUserLogs)
-		logRoute.GET("/self/search", middleware.UserAuth(), controller.SearchUserLogs)
+		logRoute.GET("/self/search", middleware.UserAuth(), middleware.SearchRateLimit(), controller.SearchUserLogs)
 
 		dataRoute := apiRouter.Group("/data")
 		dataRoute.GET("/", middleware.AdminAuth(), controller.GetAllQuotaDates)
 		dataRoute.GET("/self", middleware.UserAuth(), controller.GetUserQuotaDates)
 
-		logRoute.Use(middleware.CORS())
+		logRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())
 		{
-			logRoute.GET("/token", controller.GetLogByKey)
+			logRoute.GET("/token", middleware.TokenAuthReadOnly(), controller.GetLogByKey)
 		}
 		groupRoute := apiRouter.Group("/group")
 		groupRoute.Use(middleware.AdminAuth())

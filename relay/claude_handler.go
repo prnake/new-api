@@ -113,13 +113,30 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		}
 	}
 
+	if !model_setting.GetGlobalSettings().PassThroughRequestEnabled &&
+		!info.ChannelSetting.PassThroughBodyEnabled &&
+		service.ShouldChatCompletionsUseResponsesGlobal(info.ChannelId, info.ChannelType, info.OriginModelName) {
+		openAIRequest, convErr := service.ClaudeToOpenAIRequest(*request, info)
+		if convErr != nil {
+			return types.NewError(convErr, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+		}
+
+		usage, newApiErr := chatCompletionsViaResponses(c, info, adaptor, openAIRequest)
+		if newApiErr != nil {
+			return newApiErr
+		}
+
+		service.PostClaudeConsumeQuota(c, info, usage)
+		return nil
+	}
+
 	var requestBody io.Reader
 	if model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled {
-		body, err := common.GetRequestBody(c)
+		storage, err := common.GetBodyStorage(c)
 		if err != nil {
 			return types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
-		requestBody = bytes.NewBuffer(body)
+		requestBody = common.ReaderOnly(storage)
 	} else {
 		if service.ShouldApplyAutoCache(c, info, request) {
 			service.ApplyClaudeAutoCache(request)
@@ -137,7 +154,7 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		}
 
 		// remove disabled fields for Claude API
-		jsonData, err = relaycommon.RemoveDisabledFields(jsonData, info.ChannelOtherSettings)
+		jsonData, err = relaycommon.RemoveDisabledFields(jsonData, info.ChannelOtherSettings, info.ChannelSetting.PassThroughBodyEnabled)
 		if err != nil {
 			return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 		}

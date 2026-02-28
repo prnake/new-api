@@ -18,6 +18,7 @@ var ErrorLogEnabled bool
 var TaskQueryLimit int
 var SessionAffinityTTL int
 var ClaudeAutoCache bool
+var TaskTimeoutMinutes int
 
 // temporary variable for sora patch, will be removed in future
 var TaskPricePatches []string
