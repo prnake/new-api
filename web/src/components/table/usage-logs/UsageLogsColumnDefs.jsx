@@ -431,13 +431,6 @@ export const getLogsColumns = ({
                 {multiKeyIndex}
               </Tag>
             )}
-            {affinityHit && (
-              <Tooltip content={t('会话亲和命中')}>
-                <Tag color='green' shape='circle'>
-                  A
-                </Tag>
-              </Tooltip>
-            )}
           </Space>
         ) : null;
       },
