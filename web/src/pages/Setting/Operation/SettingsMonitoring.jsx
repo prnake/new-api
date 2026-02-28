@@ -117,6 +117,12 @@ export default function SettingsMonitoring(props) {
         currentInputs[key] = props.options[key];
       }
     }
+    // Preserve default values for state keys not present in API response
+    for (let key of Object.keys(inputs)) {
+      if (!(key in currentInputs)) {
+        currentInputs[key] = inputs[key];
+      }
+    }
     setInputs(currentInputs);
     setInputsRow(structuredClone(currentInputs));
     refForm.current.setValues(currentInputs);
