@@ -905,6 +905,53 @@ func ClearAffinityChannelId(group, modelName, affinityHash string) {
 	_ = common.RedisDel(key)
 }
 
+// MarkHashAffinityUsed sets up channelAffinityMeta for hash-based affinity,
+// so that stats, logging and usage cache all go through the same pipeline as rule-based affinity.
+func MarkHashAffinityUsed(c *gin.Context, group, modelName, affinityHash string, channelId int) {
+	if c == nil {
+		return
+	}
+	path := ""
+	if c.Request != nil && c.Request.URL != nil {
+		path = c.Request.URL.Path
+	}
+
+	ttlSeconds := constant.SessionAffinityTTL
+	if ttlSeconds <= 0 {
+		ttlSeconds = 300
+	}
+
+	fp := affinityFingerprint(affinityHash)
+	hint := buildChannelAffinityKeyHint(affinityHash)
+
+	meta := channelAffinityMeta{
+		CacheKey:       getAffinityRedisKey(group, modelName, affinityHash),
+		TTLSeconds:     ttlSeconds,
+		RuleName:       "session_hash",
+		KeySourceType:  "message_hash",
+		KeyFingerprint: fp,
+		KeyHint:        hint,
+		UsingGroup:     group,
+		ModelName:      modelName,
+		RequestPath:    path,
+	}
+	setChannelAffinityContext(c, meta)
+
+	// Set log info (same as MarkChannelAffinityUsed)
+	info := map[string]interface{}{
+		"reason":       "session_hash",
+		"rule_name":    "session_hash",
+		"using_group":  group,
+		"model":        modelName,
+		"request_path": path,
+		"channel_id":   channelId,
+		"key_source":   "message_hash",
+		"key_hint":     hint,
+		"key_fp":       fp,
+	}
+	c.Set(ginKeyChannelAffinityLogInfo, info)
+}
+
 func ValidateAffinityChannel(channelId int, group, modelName string) *model.Channel {
 	channel, err := model.CacheGetChannel(channelId)
 	if err != nil || channel == nil {

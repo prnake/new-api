@@ -108,6 +108,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 				if selectGroup == "auto" {
 					common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroup, effectiveGroup)
 				}
+				MarkHashAffinityUsed(param.Ctx, effectiveGroup, param.ModelName, affinityHash, channelId)
 				return affinityChannel, effectiveGroup, nil
 			}
 			// Affinity channel is invalid or doesn't support requested betas, clear stale cache
