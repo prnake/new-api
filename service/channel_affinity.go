@@ -589,6 +589,7 @@ type ChannelAffinityUsageCacheStats struct {
 	CompletionTokens     int64 `json:"completion_tokens"`
 	TotalTokens          int64 `json:"total_tokens"`
 	CachedTokens         int64 `json:"cached_tokens"`
+	CacheCreationTokens  int64 `json:"cache_creation_tokens"`
 	PromptCacheHitTokens int64 `json:"prompt_cache_hit_tokens"`
 	LastSeenAt           int64 `json:"last_seen_at"`
 }
@@ -604,6 +605,7 @@ type ChannelAffinityUsageCacheCounters struct {
 	CompletionTokens     int64 `json:"completion_tokens"`
 	TotalTokens          int64 `json:"total_tokens"`
 	CachedTokens         int64 `json:"cached_tokens"`
+	CacheCreationTokens  int64 `json:"cache_creation_tokens"`
 	PromptCacheHitTokens int64 `json:"prompt_cache_hit_tokens"`
 	LastSeenAt           int64 `json:"last_seen_at"`
 }
@@ -658,6 +660,7 @@ func GetChannelAffinityUsageCacheStats(ruleName, usingGroup, keyFp string) Chann
 		CompletionTokens:     v.CompletionTokens,
 		TotalTokens:          v.TotalTokens,
 		CachedTokens:         v.CachedTokens,
+		CacheCreationTokens:  v.CacheCreationTokens,
 		PromptCacheHitTokens: v.PromptCacheHitTokens,
 		LastSeenAt:           v.LastSeenAt,
 	}
@@ -706,6 +709,9 @@ func observeChannelAffinityUsageCache(statsCtx ChannelAffinityStatsContext, usag
 	next.LastSeenAt = time.Now().Unix()
 	next.CachedTokens += cachedTokens
 	next.PromptCacheHitTokens += promptCacheHitTokens
+	if usage != nil && usage.PromptTokensDetails.CachedCreationTokens > 0 {
+		next.CacheCreationTokens += int64(usage.PromptTokensDetails.CachedCreationTokens)
+	}
 	next.PromptTokens += int64(usagePromptTokens(usage))
 	next.CompletionTokens += int64(usageCompletionTokens(usage))
 	next.TotalTokens += int64(usageTotalTokens(usage))

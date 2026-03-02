@@ -132,6 +132,7 @@ const ChannelAffinityUsageCacheModal = ({
     const completionTokens = Number(s.completion_tokens || 0);
     const totalTokens = Number(s.total_tokens || 0);
     const cachedTokens = Number(s.cached_tokens || 0);
+    const cacheCreationTokens = Number(s.cache_creation_tokens || 0);
     const promptCacheHitTokens = Number(s.prompt_cache_hit_tokens || 0);
     const cachedTokenRateMode = String(s.cached_token_rate_mode || '').trim();
     const supportsTokenStats =
@@ -173,9 +174,12 @@ const ChannelAffinityUsageCacheModal = ({
       }
       if (promptTokens > 0 || cachedTokens > 0) {
         data.push({
-          key: t('Cached tokens'),
+          key: t('Cache read tokens'),
           value: `${cachedTokens} (${formatCachedTokenRate(cachedTokens, promptTokens, cachedTokenRateMode)})`,
         });
+      }
+      if (cacheCreationTokens > 0) {
+        data.push({ key: t('Cache creation tokens'), value: cacheCreationTokens });
       }
       if (promptCacheHitTokens > 0) {
         data.push({ key: t('Prompt cache hit tokens'), value: promptCacheHitTokens });
