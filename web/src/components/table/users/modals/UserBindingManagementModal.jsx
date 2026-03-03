@@ -408,3 +408,31 @@ const UserBindingManagementModal = ({
 };
 
 export default UserBindingManagementModal;
+  const [builtInBindings, setBuiltInBindings] = React.useState({});
+      const [statusRes, customBindingRes, userRes] = await Promise.all([
+        API.get(`/api/user/${userId}`),
+      if (userRes.data?.success) {
+        const userData = userRes.data.data || {};
+        setBuiltInBindings({
+          email: userData.email || '',
+          github_id: userData.github_id || '',
+          discord_id: userData.discord_id || '',
+          oidc_id: userData.oidc_id || '',
+          wechat_id: userData.wechat_id || '',
+          telegram_id: userData.telegram_id || '',
+          linux_do_id: userData.linux_do_id || '',
+        });
+        showError(userRes.data?.message || t('操作失败'));
+          setBuiltInBindings((prev) => ({
+            ...prev,
+            [bindingItem.field]: '',
+          }));
+  const getBuiltInBindingValue = (field) =>
+    builtInBindings[field] || currentValues[field] || '';
+      value: getBuiltInBindingValue('email'),
+      value: getBuiltInBindingValue('github_id'),
+      value: getBuiltInBindingValue('discord_id'),
+      value: getBuiltInBindingValue('oidc_id'),
+      value: getBuiltInBindingValue('wechat_id'),
+      value: getBuiltInBindingValue('telegram_id'),
+      value: getBuiltInBindingValue('linux_do_id'),

@@ -176,7 +176,11 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 
 	// 4. 价格计算：基础模型价格
 	info.OriginModelName = modelName
-	info.PriceData = helper.ModelPriceHelperPerCall(c, info)
+	priceData, err := helper.ModelPriceHelperPerCall(c, info)
+	if err != nil {
+		return nil, service.TaskErrorWrapper(err, "model_price_error", http.StatusBadRequest)
+	}
+	info.PriceData = priceData
 
 	// 5. 计费估算：让适配器根据用户请求提供 OtherRatios（时长、分辨率等）
 	//    必须在 ModelPriceHelperPerCall 之后调用（它会重建 PriceData）。

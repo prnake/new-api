@@ -193,6 +193,7 @@ const ChannelAffinityUsageCacheModal = ({
     }
 
     return { rows: data, supportsTokenStats };
+          key: t('Cached tokens'),
   }, [stats, params, t]);
 
   return (
