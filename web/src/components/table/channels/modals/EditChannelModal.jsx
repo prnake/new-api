@@ -1740,8 +1740,8 @@ const EditChannelModal = (props) => {
       }
     }
 
-    // type === 14 (Claude), 33 (AWS), 41 (Vertex): 保存 allowed_anthropic_beta
-    if (localInputs.type === 14 || localInputs.type === 33 || localInputs.type === 41) {
+    // type === 14 (Claude), 20 (OpenRouter), 33 (AWS), 41 (Vertex): 保存 allowed_anthropic_beta
+    if (localInputs.type === 14 || localInputs.type === 20 || localInputs.type === 33 || localInputs.type === 41) {
       settings.allowed_anthropic_beta = localInputs.allowed_anthropic_beta || [];
     settings.upstream_model_update_check_enabled =
       localInputs.upstream_model_update_check_enabled === true;
@@ -3872,8 +3872,8 @@ const EditChannelModal = (props) => {
                       </>
                     )}
 
-                    {/* Anthropic Beta 限制 - Claude / AWS / Vertex 渠道 */}
-                    {(inputs.type === 14 || inputs.type === 33 || inputs.type === 41) && (
+                    {/* Anthropic Beta 限制 - Claude / OpenRouter / AWS / Vertex 渠道 */}
+                    {(inputs.type === 14 || inputs.type === 20 || inputs.type === 33 || inputs.type === 41) && (
                       <>
                         <div className='mt-4 mb-2 text-sm font-medium text-gray-700'>
                           {t('Anthropic Beta 限制')}
