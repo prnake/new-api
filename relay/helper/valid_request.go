@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -240,6 +241,15 @@ func GetAndValidateClaudeRequest(c *gin.Context) (textRequest *dto.ClaudeRequest
 		return nil, errors.New("field model is required")
 	}
 
+	// Require stream mode when max_tokens or max_tokens_to_sample > FORCE_STREAM_MAX_TOKENS
+	maxTokens := lo.FromPtrOr(textRequest.MaxTokens, uint(0))
+	if textRequest.MaxTokensToSample != nil && *textRequest.MaxTokensToSample > maxTokens {
+		maxTokens = *textRequest.MaxTokensToSample
+	}
+	if maxTokens > constant.ForceStreamMaxTokens && !lo.FromPtrOr(textRequest.Stream, false) {
+		return nil, fmt.Errorf("max_tokens > %d requires stream mode, please set stream=true", constant.ForceStreamMaxTokens)
+	}
+
 	//if textRequest.Stream {
 	//	relayInfo.IsStream = true
 	//}
@@ -263,6 +273,10 @@ func GetAndValidateTextRequest(c *gin.Context, relayMode int) (*dto.GeneralOpenA
 
 	if lo.FromPtrOr(textRequest.MaxTokens, uint(0)) > math.MaxInt32/2 {
 		return nil, errors.New("max_tokens is invalid")
+	}
+	// Require stream mode when max_tokens or max_completion_tokens > FORCE_STREAM_MAX_TOKENS
+	if textRequest.GetMaxTokens() > constant.ForceStreamMaxTokens && !lo.FromPtrOr(textRequest.Stream, false) {
+		return nil, fmt.Errorf("max_tokens > %d requires stream mode, please set stream=true", constant.ForceStreamMaxTokens)
 	}
 	if textRequest.Model == "" {
 		return nil, errors.New("model is required")
