@@ -313,12 +313,14 @@ const EditChannelModal = (props) => {
           '此项可选，用于覆盖请求参数。不支持覆盖 stream 参数',
         ),
       };
+    }
     if (!verifyJSON(raw)) {
       return {
         tagLabel: t('JSON格式错误'),
         tagColor: 'red',
         preview: raw,
       };
+    }
     try {
       const parsed = JSON.parse(raw);
       const pretty = JSON.stringify(parsed, null, 2);
