@@ -177,12 +177,17 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 	}()
 
+	// In CC mode, don't pass betas so retry won't reject channels
+	var retryBetas []string
+	if !common.GetContextKeyBool(c, constant.ContextKeyCCMode) {
+		retryBetas = model.ParseAnthropicBeta(common.GetContextKeyString(c, constant.ContextKeyAnthropicBeta))
+	}
 	retryParam := &service.RetryParam{
 		Ctx:          c,
 		TokenGroup:   relayInfo.TokenGroup,
 		ModelName:    relayInfo.OriginModelName,
 		Retry:        common.GetPointer(0),
-		RequestBetas: model.ParseAnthropicBeta(common.GetContextKeyString(c, constant.ContextKeyAnthropicBeta)),
+		RequestBetas: retryBetas,
 	}
 	relayInfo.RetryIndex = 0
 	relayInfo.LastError = nil
@@ -505,12 +510,17 @@ func RelayTask(c *gin.Context) {
 		}
 	}()
 
+	// In CC mode, don't pass betas so retry won't reject channels
+	var taskRetryBetas []string
+	if !common.GetContextKeyBool(c, constant.ContextKeyCCMode) {
+		taskRetryBetas = model.ParseAnthropicBeta(common.GetContextKeyString(c, constant.ContextKeyAnthropicBeta))
+	}
 	retryParam := &service.RetryParam{
 		Ctx:          c,
 		TokenGroup:   relayInfo.TokenGroup,
 		ModelName:    relayInfo.OriginModelName,
 		Retry:        common.GetPointer(0),
-		RequestBetas: model.ParseAnthropicBeta(common.GetContextKeyString(c, constant.ContextKeyAnthropicBeta)),
+		RequestBetas: taskRetryBetas,
 	}
 
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {

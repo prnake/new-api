@@ -979,6 +979,29 @@ func (channel *Channel) IsAcceptAnthropicBeta(requestBetas []string) bool {
 	return true
 }
 
+// FilterAnthropicBeta returns only the betas that are in the channel's allowed list.
+// If the channel has no allowed list (unrestricted), all betas are returned.
+func (channel *Channel) FilterAnthropicBeta(requestBetas []string) []string {
+	if len(requestBetas) == 0 {
+		return nil
+	}
+	settings := channel.GetOtherSettings()
+	if len(settings.AllowedAnthropicBeta) == 0 {
+		return requestBetas // no restriction, pass all
+	}
+	allowedSet := make(map[string]bool, len(settings.AllowedAnthropicBeta))
+	for _, b := range settings.AllowedAnthropicBeta {
+		allowedSet[strings.TrimSpace(b)] = true
+	}
+	var filtered []string
+	for _, b := range requestBetas {
+		if allowedSet[strings.TrimSpace(b)] {
+			filtered = append(filtered, b)
+		}
+	}
+	return filtered
+}
+
 func GetChannelsByIds(ids []int) ([]*Channel, error) {
 	var channels []*Channel
 	err := DB.Where("id in (?)", ids).Find(&channels).Error

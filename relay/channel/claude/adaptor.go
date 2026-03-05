@@ -50,6 +50,7 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 
 func CommonClaudeHeadersOperation(c *gin.Context, req *http.Header, info *relaycommon.RelayInfo) {
 	// common headers operation
+	// Note: In CC mode, the anthropic-beta header is already filtered in SetupContextForSelectedChannel
 	anthropicBeta := c.Request.Header.Get("anthropic-beta")
 	if anthropicBeta != "" {
 		req.Set("anthropic-beta", anthropicBeta)

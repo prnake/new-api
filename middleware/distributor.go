@@ -79,6 +79,13 @@ func Distribute() func(c *gin.Context) {
 					abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorModelNameRequired))
 					return
 				}
+
+				// Handle -cc suffix: strip it and set CC mode flag
+				if strings.HasSuffix(modelRequest.Model, "-cc") {
+					modelRequest.Model = strings.TrimSuffix(modelRequest.Model, "-cc")
+					common.SetContextKey(c, constant.ContextKeyCCMode, true)
+				}
+
 				var selectGroup string
 				usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
 
@@ -106,10 +113,13 @@ func Distribute() func(c *gin.Context) {
 					}
 				}
 
+				ccMode := common.GetContextKeyBool(c, constant.ContextKeyCCMode)
+
 				if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
 					preferred, err := model.CacheGetChannel(preferredChannelID)
 					requestBetas := model.ParseAnthropicBeta(anthropicBeta)
-					if err == nil && preferred != nil && preferred.Status == common.ChannelStatusEnabled && preferred.IsAcceptAnthropicBeta(requestBetas) {
+					// In CC mode, skip beta filtering - accept any channel
+					if err == nil && preferred != nil && preferred.Status == common.ChannelStatusEnabled && (ccMode || preferred.IsAcceptAnthropicBeta(requestBetas)) {
 						if usingGroup == "auto" {
 							userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
 							autoGroups := service.GetUserAutoGroup(userGroup)
@@ -131,7 +141,11 @@ func Distribute() func(c *gin.Context) {
 				}
 
 				if channel == nil {
-					requestBetas := model.ParseAnthropicBeta(anthropicBeta)
+					// In CC mode, don't pass betas so channel selection won't reject channels
+					var requestBetas []string
+					if !ccMode {
+						requestBetas = model.ParseAnthropicBeta(anthropicBeta)
+					}
 					channel, selectGroup, err = service.CacheGetRandomSatisfiedChannel(&service.RetryParam{
 						Ctx:          c,
 						ModelName:    modelRequest.Model,
@@ -356,6 +370,25 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	if channel == nil {
 		return types.NewError(errors.New("channel is nil"), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
+
+	// In CC mode, filter anthropic-beta header to only include betas supported by this channel
+	if common.GetContextKeyBool(c, constant.ContextKeyCCMode) {
+		if origBeta := c.Request.Header.Get("anthropic-beta"); origBeta != "" {
+			filtered := channel.FilterAnthropicBeta(model.ParseAnthropicBeta(origBeta))
+			if len(filtered) > 0 {
+				c.Request.Header.Set("anthropic-beta", strings.Join(filtered, ", "))
+			} else {
+				c.Request.Header.Del("anthropic-beta")
+			}
+			// Also update the context value
+			if len(filtered) > 0 {
+				common.SetContextKey(c, constant.ContextKeyAnthropicBeta, strings.Join(filtered, ", "))
+			} else {
+				common.SetContextKey(c, constant.ContextKeyAnthropicBeta, "")
+			}
+		}
+	}
+
 	common.SetContextKey(c, constant.ContextKeyChannelId, channel.Id)
 	common.SetContextKey(c, constant.ContextKeyChannelName, channel.Name)
 	common.SetContextKey(c, constant.ContextKeyChannelType, channel.Type)

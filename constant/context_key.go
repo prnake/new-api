@@ -72,4 +72,8 @@ const (
 	ContextKeyLanguage ContextKey = "language"
 
 	ContextKeyAnthropicBeta ContextKey = "anthropic_beta"
+
+	// ContextKeyCCMode indicates the request uses -cc suffix model,
+	// which means anthropic-beta should be filtered (not rejected) for incompatible channels
+	ContextKeyCCMode ContextKey = "cc_mode"
 )
