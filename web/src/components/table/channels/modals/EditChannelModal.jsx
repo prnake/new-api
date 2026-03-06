@@ -264,6 +264,23 @@ const EditChannelModal = (props) => {
       return [];
     }
   }, [inputs.model_mapping]);
+  const upstreamDetectedModels = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (inputs.upstream_model_update_last_detected_models || [])
+            .map((model) => String(model || '').trim())
+            .filter(Boolean),
+        ),
+      ),
+    [inputs.upstream_model_update_last_detected_models],
+  );
+  const upstreamDetectedModelsPreview = useMemo(
+    () => upstreamDetectedModels.slice(0, UPSTREAM_DETECTED_MODEL_PREVIEW_LIMIT),
+    [upstreamDetectedModels],
+  );
+  const upstreamDetectedModelsOmittedCount =
+    upstreamDetectedModels.length - upstreamDetectedModelsPreview.length;
   const modelSearchMatchedCount = useMemo(() => {
     const keyword = modelSearchValue.trim();
     if (!keyword) {
@@ -283,23 +300,6 @@ const EditChannelModal = (props) => {
       name: keyword,
     });
   }, [modelSearchMatchedCount, modelSearchValue, t]);
-  const upstreamDetectedModels = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          (inputs.upstream_model_update_last_detected_models || [])
-            .map((model) => String(model || '').trim())
-            .filter(Boolean),
-        ),
-      ),
-    [inputs.upstream_model_update_last_detected_models],
-  );
-  const upstreamDetectedModelsPreview = useMemo(
-    () => upstreamDetectedModels.slice(0, UPSTREAM_DETECTED_MODEL_PREVIEW_LIMIT),
-    [upstreamDetectedModels],
-  );
-  const upstreamDetectedModelsOmittedCount =
-    upstreamDetectedModels.length - upstreamDetectedModelsPreview.length;
   const paramOverrideMeta = useMemo(() => {
     const raw =
       typeof inputs.param_override === 'string'
@@ -354,6 +354,7 @@ const EditChannelModal = (props) => {
         tagColor: 'red',
         preview: raw,
       };
+    }
   }, [inputs.param_override, t]);
   const [isIonetChannel, setIsIonetChannel] = useState(false);
   const [ionetMetadata, setIonetMetadata] = useState(null);
@@ -913,7 +914,6 @@ const EditChannelModal = (props) => {
           data.allow_service_tier = false;
           data.disable_store = false;
           data.allow_safety_identifier = false;
-          data.allowed_anthropic_beta = [];
           data.allow_include_obfuscation = false;
           data.allow_inference_geo = false;
           data.claude_beta_query = false;
@@ -1745,6 +1745,7 @@ const EditChannelModal = (props) => {
     // type === 14 (Claude), 20 (OpenRouter), 33 (AWS), 41 (Vertex): 保存 allowed_anthropic_beta
     if (localInputs.type === 14 || localInputs.type === 20 || localInputs.type === 33 || localInputs.type === 41) {
       settings.allowed_anthropic_beta = localInputs.allowed_anthropic_beta || [];
+    }
     settings.upstream_model_update_check_enabled =
       localInputs.upstream_model_update_check_enabled === true;
     settings.upstream_model_update_auto_sync_enabled =
@@ -1763,6 +1764,7 @@ const EditChannelModal = (props) => {
       !settings.upstream_model_update_check_enabled
     ) {
       settings.upstream_model_update_last_detected_models = [];
+    }
     if (typeof settings.upstream_model_update_last_check_time !== 'number') {
       settings.upstream_model_update_last_check_time = 0;
     }
@@ -1785,7 +1787,6 @@ const EditChannelModal = (props) => {
     delete localInputs.allow_service_tier;
     delete localInputs.disable_store;
     delete localInputs.allow_safety_identifier;
-    delete localInputs.allowed_anthropic_beta;
     delete localInputs.allow_include_obfuscation;
     delete localInputs.allow_inference_geo;
     delete localInputs.claude_beta_query;
@@ -2378,10 +2379,10 @@ const EditChannelModal = (props) => {
                           placeholder={
                             inputs.type === 33
                               ? inputs.aws_key_type === 'api_key'
-                                ? t('请输入 API Key，一行一个，格式：APIKey|Region')
-                                : inputs.aws_key_type === 'ak_sk_region_prefix'
-                                  ? t('请输入密钥，一行一个，格式：AccessKey|SecretAccessKey|Region|Prefix')
-                                  : t(
+                                ? t(
+                                    '请输入 API Key，一行一个，格式：APIKey|Region',
+                                  )
+                                : t(
                                     '请输入密钥，一行一个，格式：AccessKey|SecretAccessKey|Region',
                                   )
                               : t('请输入密钥，一行一个')
@@ -3591,74 +3592,6 @@ const EditChannelModal = (props) => {
                     </div>
 
                     <Form.TextArea
-                      field='header_override'
-                      label={t('请求头覆盖')}
-                      placeholder={
-                        t('此项可选，用于覆盖请求头参数') +
-                        '\n' +
-                        t('格式示例：') +
-                        '\n{\n  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36 Edg/139.0.0.0",\n  "Authorization": "Bearer {api_key}"\n}'
-                      }
-                      autosize
-                      onChange={(value) =>
-                        handleInputChange('header_override', value)
-                      }
-                      extraText={
-                        <div className='flex flex-col gap-1'>
-                          <div className='flex gap-2 flex-wrap items-center'>
-                            <Text
-                              className='!text-semi-color-primary cursor-pointer'
-                              onClick={() =>
-                                handleInputChange(
-                                  'header_override',
-                                  JSON.stringify(
-                                    {
-                                      '*': true,
-                                      're:^X-Trace-.*$': true,
-                                      'X-Foo': '{client_header:X-Foo}',
-                                      Authorization: 'Bearer {api_key}',
-                                      'User-Agent':
-                                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36 Edg/139.0.0.0',
-                                    },
-                                    null,
-                                    2,
-                                  ),
-                                )
-                              }
-                            >
-                              {t('填入模板')}
-                            </Text>
-                            <Text
-                              className='!text-semi-color-primary cursor-pointer'
-                              onClick={() =>
-                                handleInputChange(
-                                  'header_override',
-                                  JSON.stringify(
-                                    {
-                                      '*': true,
-                                    },
-                                    null,
-                                    2,
-                                  ),
-                                )
-                              }
-                            >
-                              {t('填入透传模版')}
-                            </Text>
-                            <Text
-                              className='!text-semi-color-primary cursor-pointer'
-                              onClick={() => formatJsonField('header_override')}
-                            >
-                              {t('格式化')}
-                            </Text>
-                          </div>
-                          <div>
-                            <Text type='tertiary' size='small'>
-                              {t('支持变量：')}
-                            </Text>
-                            <div className='text-xs text-tertiary ml-2'>
-                              <div>
-                                {t('渠道密钥')}: {'{api_key}'}
                         field='header_override'
                         label={t('请求头覆盖')}
                         placeholder={
