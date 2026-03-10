@@ -247,7 +247,10 @@ func GetAndValidateClaudeRequest(c *gin.Context) (textRequest *dto.ClaudeRequest
 		maxTokens = *textRequest.MaxTokensToSample
 	}
 	if maxTokens > constant.ForceStreamMaxTokens && !lo.FromPtrOr(textRequest.Stream, false) {
-		return nil, fmt.Errorf("max_tokens > %d requires stream mode, please set stream=true", constant.ForceStreamMaxTokens)
+		return nil, types.NewErrorWithStatusCode(
+			fmt.Errorf("max_tokens > %d requires stream mode, please set stream=true", constant.ForceStreamMaxTokens),
+			types.ErrorCodeInvalidRequest, 429, types.ErrOptionWithSkipRetry(),
+		)
 	}
 
 	//if textRequest.Stream {
@@ -276,7 +279,10 @@ func GetAndValidateTextRequest(c *gin.Context, relayMode int) (*dto.GeneralOpenA
 	}
 	// Require stream mode when max_tokens or max_completion_tokens > FORCE_STREAM_MAX_TOKENS
 	if textRequest.GetMaxTokens() > constant.ForceStreamMaxTokens && !lo.FromPtrOr(textRequest.Stream, false) {
-		return nil, fmt.Errorf("max_tokens > %d requires stream mode, please set stream=true", constant.ForceStreamMaxTokens)
+		return nil, types.NewErrorWithStatusCode(
+			fmt.Errorf("max_tokens > %d requires stream mode, please set stream=true", constant.ForceStreamMaxTokens),
+			types.ErrorCodeInvalidRequest, 429, types.ErrOptionWithSkipRetry(),
+		)
 	}
 	if textRequest.Model == "" {
 		return nil, errors.New("model is required")
