@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 
+	appcommon "github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -74,6 +76,12 @@ func ModelMappedHelper(c *gin.Context, info *common.RelayInfo, request dto.Reque
 		info.UpstreamModelName = finalUpstreamModelName
 		info.OriginModelName = ratio_setting.WithCompactModelSuffix(finalUpstreamModelName)
 	}
+	// Strip -cc suffix from upstream model name (like -thinking is stripped in adaptors)
+	if strings.HasSuffix(info.UpstreamModelName, "-cc") {
+		info.UpstreamModelName = strings.TrimSuffix(info.UpstreamModelName, "-cc")
+		appcommon.SetContextKey(c, constant.ContextKeyCCMode, true)
+	}
+
 	if request != nil {
 		request.SetModelName(info.UpstreamModelName)
 	}

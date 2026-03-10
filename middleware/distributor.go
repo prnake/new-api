@@ -80,9 +80,9 @@ func Distribute() func(c *gin.Context) {
 					return
 				}
 
-				// Handle -cc suffix: strip it and set CC mode flag
-				if strings.HasSuffix(modelRequest.Model, "-cc") {
-					modelRequest.Model = strings.TrimSuffix(modelRequest.Model, "-cc")
+				// Detect -cc suffix for CC mode (model name kept as-is for channel lookup)
+				ccMode := strings.HasSuffix(modelRequest.Model, "-cc")
+				if ccMode {
 					common.SetContextKey(c, constant.ContextKeyCCMode, true)
 				}
 
@@ -112,8 +112,6 @@ func Distribute() func(c *gin.Context) {
 						common.SetContextKey(c, constant.ContextKeyUsingGroup, usingGroup)
 					}
 				}
-
-				ccMode := common.GetContextKeyBool(c, constant.ContextKeyCCMode)
 
 				if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
 					preferred, err := model.CacheGetChannel(preferredChannelID)

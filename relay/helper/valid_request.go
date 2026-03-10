@@ -241,6 +241,12 @@ func GetAndValidateClaudeRequest(c *gin.Context) (textRequest *dto.ClaudeRequest
 		return nil, errors.New("field model is required")
 	}
 
+	// Handle -cc suffix: strip it and set CC mode flag
+	if strings.HasSuffix(textRequest.Model, "-cc") {
+		textRequest.Model = strings.TrimSuffix(textRequest.Model, "-cc")
+		common.SetContextKey(c, constant.ContextKeyCCMode, true)
+	}
+
 	// Require stream mode when max_tokens or max_tokens_to_sample > FORCE_STREAM_MAX_TOKENS
 	maxTokens := lo.FromPtrOr(textRequest.MaxTokens, uint(0))
 	if textRequest.MaxTokensToSample != nil && *textRequest.MaxTokensToSample > maxTokens {
@@ -286,6 +292,12 @@ func GetAndValidateTextRequest(c *gin.Context, relayMode int) (*dto.GeneralOpenA
 	}
 	if textRequest.Model == "" {
 		return nil, errors.New("model is required")
+	}
+
+	// Handle -cc suffix: strip it and set CC mode flag
+	if strings.HasSuffix(textRequest.Model, "-cc") {
+		textRequest.Model = strings.TrimSuffix(textRequest.Model, "-cc")
+		common.SetContextKey(c, constant.ContextKeyCCMode, true)
 	}
 	if textRequest.WebSearchOptions != nil {
 		if textRequest.WebSearchOptions.SearchContextSize != "" {
