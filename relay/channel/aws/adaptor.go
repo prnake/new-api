@@ -143,6 +143,10 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to convert openai request to claude request")
 	}
+	// Apply auto-cache for OpenAI-compatible path (/v1/chat/completions)
+	if service.ShouldApplyAutoCache(c, info, claudeReq) {
+		service.ApplyClaudeAutoCache(claudeReq)
+	}
 	info.UpstreamModelName = claudeReq.Model
 	return claudeReq, err
 }

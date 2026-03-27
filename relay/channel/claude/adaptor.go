@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/types"
 
@@ -74,7 +75,15 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	if request == nil {
 		return nil, errors.New("request is nil")
 	}
-	return RequestOpenAI2ClaudeMessage(c, *request)
+	claudeReq, err := RequestOpenAI2ClaudeMessage(c, *request)
+	if err != nil {
+		return nil, err
+	}
+	// Apply auto-cache for OpenAI-compatible path (/v1/chat/completions)
+	if service.ShouldApplyAutoCache(c, info, claudeReq) {
+		service.ApplyClaudeAutoCache(claudeReq)
+	}
+	return claudeReq, nil
 }
 
 func (a *Adaptor) ConvertRerankRequest(c *gin.Context, relayMode int, request dto.RerankRequest) (any, error) {

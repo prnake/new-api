@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/setting/reasoning"
 	"github.com/QuantumNous/new-api/types"
@@ -330,6 +331,10 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		claudeReq, err := claude.RequestOpenAI2ClaudeMessage(c, *request)
 		if err != nil {
 			return nil, err
+		}
+		// Apply auto-cache for OpenAI-compatible path (/v1/chat/completions)
+		if service.ShouldApplyAutoCache(c, info, claudeReq) {
+			service.ApplyClaudeAutoCache(claudeReq)
 		}
 		vertexClaudeReq := copyRequest(claudeReq, anthropicVersion)
 		c.Set("request_model", claudeReq.Model)
