@@ -116,9 +116,15 @@ func Distribute() func(c *gin.Context) {
 				if preferredChannelID, affinityKeyIdx, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
 					preferred, err := model.CacheGetChannel(preferredChannelID)
 					requestBetas := model.ParseAnthropicBeta(anthropicBeta)
-					// In CC mode, skip beta filtering - accept any channel
-					if err == nil && preferred != nil && preferred.Status == common.ChannelStatusEnabled && (ccMode || preferred.IsAcceptAnthropicBeta(requestBetas)) {
-						if usingGroup == "auto" {
+					if err == nil && preferred != nil {
+						if preferred.Status != common.ChannelStatusEnabled {
+							if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
+								abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorChannelDisabled))
+								return
+							}
+						} else if !(ccMode || preferred.IsAcceptAnthropicBeta(requestBetas)) {
+							// Not in CC mode and channel doesn't accept requested betas, skip affinity
+						} else if usingGroup == "auto" {
 							userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
 							autoGroups := service.GetUserAutoGroup(userGroup)
 							for _, g := range autoGroups {
