@@ -34,9 +34,45 @@ const (
 	channelAffinityUsageCacheStatsNamespace = "new-api:channel_affinity_usage_cache_stats:v1"
 )
 
+// channelAffinityEntry stores both channel ID and multi-key index for rule-based affinity.
+type channelAffinityEntry struct {
+	ChannelID int `json:"c"`
+	KeyIndex  int `json:"k"` // -1 means not set (single-key or unknown)
+}
+
+// channelAffinityEntryCodec encodes/decodes channelAffinityEntry to/from Redis strings.
+// Format: "channelId" or "channelId:keyIndex" (backwards-compatible with plain int values).
+type channelAffinityEntryCodec struct{}
+
+func (channelAffinityEntryCodec) Encode(v channelAffinityEntry) (string, error) {
+	if v.KeyIndex < 0 {
+		return strconv.Itoa(v.ChannelID), nil
+	}
+	return fmt.Sprintf("%d:%d", v.ChannelID, v.KeyIndex), nil
+}
+
+func (channelAffinityEntryCodec) Decode(s string) (channelAffinityEntry, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return channelAffinityEntry{}, fmt.Errorf("empty affinity entry value")
+	}
+	parts := strings.SplitN(s, ":", 2)
+	channelID, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return channelAffinityEntry{}, err
+	}
+	keyIndex := -1
+	if len(parts) >= 2 {
+		if idx, err := strconv.Atoi(parts[1]); err == nil {
+			keyIndex = idx
+		}
+	}
+	return channelAffinityEntry{ChannelID: channelID, KeyIndex: keyIndex}, nil
+}
+
 var (
 	channelAffinityCacheOnce sync.Once
-	channelAffinityCache     *cachex.HybridCache[int]
+	channelAffinityCache     *cachex.HybridCache[channelAffinityEntry]
 
 	channelAffinityUsageCacheStatsOnce  sync.Once
 	channelAffinityUsageCacheStatsCache *cachex.HybridCache[ChannelAffinityUsageCacheCounters]
@@ -82,7 +118,7 @@ type ChannelAffinityCacheStats struct {
 	CacheAlgo     string         `json:"cache_algo"`
 }
 
-func getChannelAffinityCache() *cachex.HybridCache[int] {
+func getChannelAffinityCache() *cachex.HybridCache[channelAffinityEntry] {
 	channelAffinityCacheOnce.Do(func() {
 		setting := operation_setting.GetChannelAffinitySetting()
 		capacity := setting.MaxEntries
@@ -94,15 +130,15 @@ func getChannelAffinityCache() *cachex.HybridCache[int] {
 			defaultTTLSeconds = 3600
 		}
 
-		channelAffinityCache = cachex.NewHybridCache[int](cachex.HybridCacheConfig[int]{
+		channelAffinityCache = cachex.NewHybridCache[channelAffinityEntry](cachex.HybridCacheConfig[channelAffinityEntry]{
 			Namespace: cachex.Namespace(channelAffinityCacheNamespace),
 			Redis:     common.RDB,
 			RedisEnabled: func() bool {
 				return common.RedisEnabled && common.RDB != nil
 			},
-			RedisCodec: cachex.IntCodec{},
-			Memory: func() *hot.HotCache[string, int] {
-				return hot.NewHotCache[string, int](hot.LRU, capacity).
+			RedisCodec: channelAffinityEntryCodec{},
+			Memory: func() *hot.HotCache[string, channelAffinityEntry] {
+				return hot.NewHotCache[string, channelAffinityEntry](hot.LRU, capacity).
 					WithTTL(time.Duration(defaultTTLSeconds) * time.Second).
 					WithJanitor().
 					Build()
@@ -533,10 +569,10 @@ func ApplyChannelAffinityOverrideTemplate(c *gin.Context, paramOverride map[stri
 	return mergedParam, true
 }
 
-func GetPreferredChannelByAffinity(c *gin.Context, modelName string, usingGroup string) (int, bool) {
+func GetPreferredChannelByAffinity(c *gin.Context, modelName string, usingGroup string) (int, int, bool) {
 	setting := operation_setting.GetChannelAffinitySetting()
 	if setting == nil || !setting.Enabled {
-		return 0, false
+		return 0, -1, false
 	}
 	path := ""
 	if c != nil && c.Request != nil && c.Request.URL != nil {
@@ -596,17 +632,17 @@ func GetPreferredChannelByAffinity(c *gin.Context, modelName string, usingGroup 
 		})
 
 		cache := getChannelAffinityCache()
-		channelID, found, err := cache.Get(cacheKeySuffix)
+		entry, found, err := cache.Get(cacheKeySuffix)
 		if err != nil {
 			common.SysError(fmt.Sprintf("channel affinity cache get failed: key=%s, err=%v", cacheKeyFull, err))
-			return 0, false
+			return 0, -1, false
 		}
 		if found {
-			return channelID, true
+			return entry.ChannelID, entry.KeyIndex, true
 		}
-		return 0, false
+		return 0, -1, false
 	}
-	return 0, false
+	return 0, -1, false
 }
 
 func ShouldSkipRetryAfterChannelAffinityFailure(c *gin.Context) bool {
@@ -684,8 +720,15 @@ func RecordChannelAffinity(c *gin.Context, channelID int) {
 	if ttlSeconds <= 0 {
 		ttlSeconds = 3600
 	}
+
+	keyIndex := -1
+	if common.GetContextKeyBool(c, constant.ContextKeyChannelIsMultiKey) {
+		keyIndex = common.GetContextKeyInt(c, constant.ContextKeyChannelMultiKeyIndex)
+	}
+
+	entry := channelAffinityEntry{ChannelID: channelID, KeyIndex: keyIndex}
 	cache := getChannelAffinityCache()
-	if err := cache.SetWithTTL(cacheKey, channelID, time.Duration(ttlSeconds)*time.Second); err != nil {
+	if err := cache.SetWithTTL(cacheKey, entry, time.Duration(ttlSeconds)*time.Second); err != nil {
 		common.SysError(fmt.Sprintf("channel affinity cache set failed: key=%s, err=%v", cacheKey, err))
 	}
 }

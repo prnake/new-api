@@ -113,7 +113,7 @@ func Distribute() func(c *gin.Context) {
 					}
 				}
 
-				if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
+				if preferredChannelID, affinityKeyIdx, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
 					preferred, err := model.CacheGetChannel(preferredChannelID)
 					requestBetas := model.ParseAnthropicBeta(anthropicBeta)
 					// In CC mode, skip beta filtering - accept any channel
@@ -126,6 +126,9 @@ func Distribute() func(c *gin.Context) {
 									selectGroup = g
 									common.SetContextKey(c, constant.ContextKeyAutoGroup, g)
 									channel = preferred
+									if affinityKeyIdx >= 0 {
+										common.SetContextKey(c, constant.ContextKeyAffinityKeyIndex, affinityKeyIdx)
+									}
 									service.MarkChannelAffinityUsed(c, g, preferred.Id)
 									break
 								}
@@ -133,6 +136,9 @@ func Distribute() func(c *gin.Context) {
 						} else if model.IsChannelEnabledForGroupModel(usingGroup, modelRequest.Model, preferred.Id) {
 							channel = preferred
 							selectGroup = usingGroup
+							if affinityKeyIdx >= 0 {
+								common.SetContextKey(c, constant.ContextKeyAffinityKeyIndex, affinityKeyIdx)
+							}
 							service.MarkChannelAffinityUsed(c, usingGroup, preferred.Id)
 						}
 					}
