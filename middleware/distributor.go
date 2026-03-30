@@ -79,8 +79,22 @@ func Distribute() func(c *gin.Context) {
 					abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorModelNameRequired))
 					return
 				}
+
+				// Detect -cc suffix for CC mode (model name kept as-is for channel lookup)
+				ccMode := strings.HasSuffix(modelRequest.Model, "-cc")
+				if ccMode {
+					common.SetContextKey(c, constant.ContextKeyCCMode, true)
+				}
+
 				var selectGroup string
 				usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+
+				// Store anthropic-beta header in context for downstream filtering
+				anthropicBeta := c.Request.Header.Get("anthropic-beta")
+				if anthropicBeta != "" {
+					common.SetContextKey(c, constant.ContextKeyAnthropicBeta, anthropicBeta)
+				}
+
 				// check path is /pg/chat/completions
 				if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") {
 					playgroundRequest := &dto.PlayGroundRequest{}
@@ -99,9 +113,11 @@ func Distribute() func(c *gin.Context) {
 					}
 				}
 
-				if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
+				if preferredChannelID, affinityKeyIdx, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
 					preferred, err := model.CacheGetChannel(preferredChannelID)
-					if err == nil && preferred != nil && preferred.Status == common.ChannelStatusEnabled {
+					requestBetas := model.ParseAnthropicBeta(anthropicBeta)
+					// In CC mode, skip beta filtering - accept any channel
+					if err == nil && preferred != nil && preferred.Status == common.ChannelStatusEnabled && (ccMode || preferred.IsAcceptAnthropicBeta(requestBetas)) {
 						if usingGroup == "auto" {
 							userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
 							autoGroups := service.GetUserAutoGroup(userGroup)
@@ -110,6 +126,9 @@ func Distribute() func(c *gin.Context) {
 									selectGroup = g
 									common.SetContextKey(c, constant.ContextKeyAutoGroup, g)
 									channel = preferred
+									if affinityKeyIdx >= 0 {
+										common.SetContextKey(c, constant.ContextKeyAffinityKeyIndex, affinityKeyIdx)
+									}
 									service.MarkChannelAffinityUsed(c, g, preferred.Id)
 									break
 								}
@@ -117,17 +136,26 @@ func Distribute() func(c *gin.Context) {
 						} else if model.IsChannelEnabledForGroupModel(usingGroup, modelRequest.Model, preferred.Id) {
 							channel = preferred
 							selectGroup = usingGroup
+							if affinityKeyIdx >= 0 {
+								common.SetContextKey(c, constant.ContextKeyAffinityKeyIndex, affinityKeyIdx)
+							}
 							service.MarkChannelAffinityUsed(c, usingGroup, preferred.Id)
 						}
 					}
 				}
 
 				if channel == nil {
+					// In CC mode, don't pass betas so channel selection won't reject channels
+					var requestBetas []string
+					if !ccMode {
+						requestBetas = model.ParseAnthropicBeta(anthropicBeta)
+					}
 					channel, selectGroup, err = service.CacheGetRandomSatisfiedChannel(&service.RetryParam{
-						Ctx:        c,
-						ModelName:  modelRequest.Model,
-						TokenGroup: usingGroup,
-						Retry:      common.GetPointer(0),
+						Ctx:          c,
+						ModelName:    modelRequest.Model,
+						TokenGroup:   usingGroup,
+						Retry:        common.GetPointer(0),
+						RequestBetas: requestBetas,
 					})
 					if err != nil {
 						showGroup := usingGroup
@@ -155,6 +183,7 @@ func Distribute() func(c *gin.Context) {
 		c.Next()
 		if channel != nil && c.Writer != nil && c.Writer.Status() < http.StatusBadRequest {
 			service.RecordChannelAffinity(c, channel.Id)
+			service.RecordChannelAffinityByHash(c, channel.Id)
 		}
 	}
 }
@@ -265,12 +294,14 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 			modelRequest.Model = modelName
 		}
 		c.Set("relay_mode", relayMode)
+		trySetAffinityHash(c)
 	} else if !strings.HasPrefix(c.Request.URL.Path, "/v1/audio/transcriptions") && !strings.Contains(c.Request.Header.Get("Content-Type"), "multipart/form-data") {
 		req, err := getModelFromRequest(c)
 		if err != nil {
 			return nil, false, err
 		}
 		modelRequest.Model = req.Model
+		trySetAffinityHash(c)
 	}
 	if strings.HasPrefix(c.Request.URL.Path, "/v1/realtime") {
 		//wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01
@@ -329,6 +360,7 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		modelRequest.Model = req.Model
 		modelRequest.Group = req.Group
 		common.SetContextKey(c, constant.ContextKeyTokenGroup, modelRequest.Group)
+		trySetAffinityHash(c)
 	}
 
 	if strings.HasPrefix(c.Request.URL.Path, "/v1/responses/compact") && modelRequest.Model != "" {
@@ -342,6 +374,25 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	if channel == nil {
 		return types.NewError(errors.New("channel is nil"), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
+
+	// In CC mode, filter anthropic-beta header to only include betas supported by this channel
+	if common.GetContextKeyBool(c, constant.ContextKeyCCMode) {
+		if origBeta := c.Request.Header.Get("anthropic-beta"); origBeta != "" {
+			filtered := channel.FilterAnthropicBeta(model.ParseAnthropicBeta(origBeta))
+			if len(filtered) > 0 {
+				c.Request.Header.Set("anthropic-beta", strings.Join(filtered, ", "))
+			} else {
+				c.Request.Header.Del("anthropic-beta")
+			}
+			// Also update the context value
+			if len(filtered) > 0 {
+				common.SetContextKey(c, constant.ContextKeyAnthropicBeta, strings.Join(filtered, ", "))
+			} else {
+				common.SetContextKey(c, constant.ContextKeyAnthropicBeta, "")
+			}
+		}
+	}
+
 	common.SetContextKey(c, constant.ContextKeyChannelId, channel.Id)
 	common.SetContextKey(c, constant.ContextKeyChannelName, channel.Name)
 	common.SetContextKey(c, constant.ContextKeyChannelType, channel.Type)
@@ -362,7 +413,28 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	common.SetContextKey(c, constant.ContextKeyChannelModelMapping, channel.GetModelMapping())
 	common.SetContextKey(c, constant.ContextKeyChannelStatusCodeMapping, channel.GetStatusCodeMapping())
 
-	key, index, newAPIError := channel.GetNextEnabledKey()
+	var key string
+	var index int
+	var newAPIError *types.NewAPIError
+
+	affinityKeyIndex := -1
+	if affinityIdx, exists := common.GetContextKey(c, constant.ContextKeyAffinityKeyIndex); exists {
+		if idx, ok := affinityIdx.(int); ok && idx >= 0 {
+			affinityKeyIndex = idx
+		}
+	}
+
+	if affinityKeyIndex >= 0 && channel.ChannelInfo.IsMultiKey {
+		key, newAPIError = channel.GetKeyByIndex(affinityKeyIndex)
+		if newAPIError != nil {
+			key, index, newAPIError = channel.GetNextEnabledKey()
+		} else {
+			index = affinityKeyIndex
+		}
+	} else {
+		key, index, newAPIError = channel.GetNextEnabledKey()
+	}
+
 	if newAPIError != nil {
 		return newAPIError
 	}
@@ -399,6 +471,39 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 		c.Set("bot_id", channel.Other)
 	}
 	return nil
+}
+
+func trySetAffinityHash(c *gin.Context) {
+	if !common.RedisEnabled {
+		return
+	}
+
+	var hash string
+	path := c.Request.URL.Path
+
+	if strings.Contains(path, "/v1/messages") {
+		var claudeRequest dto.ClaudeRequest
+		if err := common.UnmarshalBodyReusable(c, &claudeRequest); err != nil {
+			return
+		}
+		hash = service.ComputeClaudeMessagesHash(claudeRequest.Messages)
+	} else if strings.HasPrefix(path, "/v1beta/models/") || strings.HasPrefix(path, "/v1/models/") {
+		var geminiRequest dto.GeminiChatRequest
+		if err := common.UnmarshalBodyReusable(c, &geminiRequest); err != nil {
+			return
+		}
+		hash = service.ComputeGeminiMessagesHash(geminiRequest.Contents)
+	} else {
+		var chatRequest dto.GeneralOpenAIRequest
+		if err := common.UnmarshalBodyReusable(c, &chatRequest); err != nil {
+			return
+		}
+		hash = service.ComputeOpenAIMessagesHash(chatRequest.Messages)
+	}
+
+	if hash != "" {
+		common.SetContextKey(c, constant.ContextKeyAffinityHash, hash)
+	}
 }
 
 // extractModelNameFromGeminiPath 从 Gemini API URL 路径中提取模型名

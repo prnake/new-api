@@ -41,8 +41,6 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 	if strings.Contains(path, "/v1/videos/") && strings.HasSuffix(path, "/remix") {
 		info.Action = constant.TaskActionRemix
 	}
-
-	// 提取 remix 任务的 video_id
 	if info.Action == constant.TaskActionRemix {
 		videoID := c.Param("video_id")
 		if strings.TrimSpace(videoID) == "" {

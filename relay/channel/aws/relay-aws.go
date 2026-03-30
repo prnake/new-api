@@ -47,7 +47,7 @@ func newAwsInvokeContext() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), time.Duration(common.RelayTimeout)*time.Second)
 }
 
-func newAwsClient(c *gin.Context, info *relaycommon.RelayInfo) (*bedrockruntime.Client, error) {
+func newAwsClient(c *gin.Context, info *relaycommon.RelayInfo, isBedrockProxy bool) (*bedrockruntime.Client, string, bool, error) {
 	var (
 		httpClient *http.Client
 		err        error
@@ -55,14 +55,31 @@ func newAwsClient(c *gin.Context, info *relaycommon.RelayInfo) (*bedrockruntime.
 	if info.ChannelSetting.Proxy != "" {
 		httpClient, err = service.NewProxyHttpClient(info.ChannelSetting.Proxy)
 		if err != nil {
-			return nil, fmt.Errorf("new proxy http client failed: %w", err)
+			return nil, "", false, fmt.Errorf("new proxy http client failed: %w", err)
 		}
 	} else {
 		httpClient = service.GetHttpClient()
 	}
 
+	// Bedrock Proxy 模式：使用自定义 endpoint
+	if isBedrockProxy {
+		if info.ChannelBaseUrl == "" {
+			return nil, "", false, errors.New("bedrock proxy base url is empty")
+		}
+		baseEndpoint := strings.TrimRight(info.ChannelBaseUrl, "/")
+		client := bedrockruntime.New(bedrockruntime.Options{
+			Region:                  "us-east-1", // Bedrock Proxy 模式下 region 不重要，但需要设置
+			BaseEndpoint:            aws.String(baseEndpoint),
+			BearerAuthTokenProvider: bearer.StaticTokenProvider{Token: bearer.Token{Value: info.ApiKey}},
+			HTTPClient:              httpClient,
+		})
+		return client, "", false, nil
+	}
+
 	awsSecret := strings.Split(info.ApiKey, "|")
 	var client *bedrockruntime.Client
+	var modelPrefix string
+	var hasCustomPrefix bool
 	switch len(awsSecret) {
 	case 2:
 		apiKey := awsSecret[0]
@@ -72,6 +89,9 @@ func newAwsClient(c *gin.Context, info *relaycommon.RelayInfo) (*bedrockruntime.
 			BearerAuthTokenProvider: bearer.StaticTokenProvider{Token: bearer.Token{Value: apiKey}},
 			HTTPClient:              httpClient,
 		})
+		// 对于2参数格式，从region推导prefix
+		modelPrefix = getAwsRegionPrefix(region)
+		hasCustomPrefix = false
 	case 3:
 		ak := awsSecret[0]
 		sk := awsSecret[1]
@@ -81,27 +101,59 @@ func newAwsClient(c *gin.Context, info *relaycommon.RelayInfo) (*bedrockruntime.
 			Credentials: aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(ak, sk, "")),
 			HTTPClient:  httpClient,
 		})
+		modelPrefix = getAwsRegionPrefix(region)
+		hasCustomPrefix = false
+	case 4:
+		ak := awsSecret[0]
+		sk := awsSecret[1]
+		region := awsSecret[2]
+		prefix := awsSecret[3]
+		client = bedrockruntime.New(bedrockruntime.Options{
+			Region:      region,
+			Credentials: aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(ak, sk, "")),
+			HTTPClient:  httpClient,
+		})
+		// 对于4参数格式，使用配置的prefix
+		modelPrefix = prefix
+		hasCustomPrefix = true
 	default:
-		return nil, errors.New("invalid aws secret key")
+		return nil, "", false, errors.New("invalid aws secret key")
 	}
 
-	return client, nil
+	return client, modelPrefix, hasCustomPrefix, nil
 }
 
 func doAwsClientRequest(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor, requestBody io.Reader) (any, error) {
-	awsCli, err := newAwsClient(c, info)
+	isBedrockProxy := a.ClientMode == ClientModeBedrockProxy
+	awsCli, modelPrefix, hasCustomPrefix, err := newAwsClient(c, info, isBedrockProxy)
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeChannelAwsClientError)
 	}
 	a.AwsClient = awsCli
+	a.ModelPrefix = modelPrefix
 
 	// 获取对应的AWS模型ID
-	awsModelId := getAwsModelID(info.UpstreamModelName)
+	var awsModelId string
+	if isBedrockProxy {
+		// Bedrock Proxy 模式：直接使用上游模型名称，不做前缀处理
+		awsModelId = info.UpstreamModelName
+		if awsModelId == "" {
+			awsModelId = info.OriginModelName
+		}
+	} else {
+		awsModelId = getAwsModelID(info.UpstreamModelName)
 
-	awsRegionPrefix := getAwsRegionPrefix(awsCli.Options().Region)
-	canCrossRegion := awsModelCanCrossRegion(awsModelId, awsRegionPrefix)
-	if canCrossRegion {
-		awsModelId = awsModelCrossRegion(awsModelId, awsRegionPrefix)
+		if hasCustomPrefix {
+			// 如果配置了自定义prefix（4个参数格式），直接使用
+			awsModelId = modelPrefix + "." + awsModelId
+		} else {
+			// 否则，从region推导并检查模型是否支持跨区域
+			awsRegionPrefix := getAwsRegionPrefix(awsCli.Options().Region)
+			canCrossRegion := awsModelCanCrossRegion(awsModelId, awsRegionPrefix)
+			if canCrossRegion {
+				awsModelId = awsModelCrossRegion(awsModelId, awsRegionPrefix, modelPrefix)
+			}
+		}
 	}
 
 	// init empty request.header
@@ -206,7 +258,12 @@ func awsModelCanCrossRegion(awsModelId, awsRegionPrefix string) bool {
 	return exists && regionSet[awsRegionPrefix]
 }
 
-func awsModelCrossRegion(awsModelId, awsRegionPrefix string) string {
+func awsModelCrossRegion(awsModelId, awsRegionPrefix, configuredPrefix string) string {
+	// 如果配置了prefix，优先使用配置的prefix
+	if configuredPrefix != "" {
+		return configuredPrefix + "." + awsModelId
+	}
+	// 否则从region推导
 	modelPrefix, find := awsRegionCrossModelPrefixMap[awsRegionPrefix]
 	if !find {
 		return awsModelId
@@ -221,8 +278,7 @@ func getAwsModelID(requestModel string) string {
 	return requestModel
 }
 
-func awsHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (*types.NewAPIError, *dto.Usage) {
-
+func awsHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor, resp *http.Response) (*types.NewAPIError, *dto.Usage) {
 	ctx, cancel := newAwsInvokeContext()
 	defer cancel()
 
@@ -252,7 +308,7 @@ func awsHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (*types
 	return nil, claudeInfo.Usage
 }
 
-func awsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (*types.NewAPIError, *dto.Usage) {
+func awsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor, resp *http.Response) (*types.NewAPIError, *dto.Usage) {
 	ctx, cancel := newAwsInvokeContext()
 	defer cancel()
 
@@ -291,6 +347,20 @@ func awsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (
 
 	claude.HandleStreamFinalResponse(c, info, claudeInfo)
 	return nil, claudeInfo.Usage
+}
+
+func writeBedrockProxyHeaders(c *gin.Context, header http.Header, contentLength int) {
+	for key, values := range header {
+		if strings.EqualFold(key, "Content-Length") {
+			continue
+		}
+		for _, value := range values {
+			c.Writer.Header().Add(key, value)
+		}
+	}
+	if contentLength >= 0 {
+		c.Writer.Header().Set("Content-Length", fmt.Sprintf("%d", contentLength))
+	}
 }
 
 // Nova模型处理函数

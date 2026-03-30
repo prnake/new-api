@@ -154,13 +154,13 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 	}
 
 	if baseModel, effortLevel, ok := reasoning.TrimEffortSuffix(textRequest.Model); ok && effortLevel != "" &&
-		strings.HasPrefix(textRequest.Model, "claude-opus-4-6") {
+		(strings.HasPrefix(textRequest.Model, "claude-opus-4-6") || strings.HasPrefix(textRequest.Model, "claude-sonnet-4-6")) {
 		claudeRequest.Model = baseModel
 		claudeRequest.Thinking = &dto.Thinking{
 			Type: "adaptive",
 		}
 		claudeRequest.OutputConfig = json.RawMessage(fmt.Sprintf(`{"effort":"%s"}`, effortLevel))
-		claudeRequest.TopP = common.GetPointer[float64](0)
+		claudeRequest.TopP = nil
 		claudeRequest.Temperature = common.GetPointer[float64](1.0)
 	} else if model_setting.GetClaudeSettings().ThinkingAdapterEnabled &&
 		strings.HasSuffix(textRequest.Model, "-thinking") {
@@ -175,9 +175,8 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 			Type:         "enabled",
 			BudgetTokens: common.GetPointer[int](int(float64(*claudeRequest.MaxTokens) * model_setting.GetClaudeSettings().ThinkingAdapterBudgetTokensPercentage)),
 		}
-		// TODO: 临时处理
 		// https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking#important-considerations-when-using-extended-thinking
-		claudeRequest.TopP = common.GetPointer[float64](0)
+		claudeRequest.TopP = nil
 		claudeRequest.Temperature = common.GetPointer[float64](1.0)
 		if !model_setting.ShouldPreserveThinkingSuffix(textRequest.Model) {
 			claudeRequest.Model = strings.TrimSuffix(textRequest.Model, "-thinking")

@@ -189,6 +189,30 @@ func (channel *Channel) GetNextEnabledKey() (string, int, *types.NewAPIError) {
 	}
 }
 
+func (channel *Channel) GetKeyByIndex(index int) (string, *types.NewAPIError) {
+	if !channel.ChannelInfo.IsMultiKey {
+		return channel.Key, nil
+	}
+
+	keys := channel.GetKeys()
+	if len(keys) == 0 {
+		return "", types.NewError(errors.New("no keys available"), types.ErrorCodeChannelNoAvailableKey)
+	}
+
+	if index < 0 || index >= len(keys) {
+		return "", types.NewError(errors.New("key index out of range"), types.ErrorCodeChannelNoAvailableKey)
+	}
+
+	statusList := channel.ChannelInfo.MultiKeyStatusList
+	if statusList != nil {
+		if status, ok := statusList[index]; ok && status != common.ChannelStatusEnabled {
+			return "", types.NewError(errors.New("specified key is disabled"), types.ErrorCodeChannelNoAvailableKey)
+		}
+	}
+
+	return keys[index], nil
+}
+
 func (channel *Channel) SaveChannelInfo() error {
 	return DB.Model(channel).Update("channel_info", channel.ChannelInfo).Error
 }
@@ -916,6 +940,66 @@ func (channel *Channel) GetHeaderOverride() map[string]interface{} {
 		}
 	}
 	return headerOverride
+}
+
+// ParseAnthropicBeta parses a comma-separated anthropic-beta header into a slice.
+func ParseAnthropicBeta(header string) []string {
+	if header == "" {
+		return nil
+	}
+	parts := strings.Split(header, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
+// IsAcceptAnthropicBeta checks if all request betas are in the channel's allowed list.
+func (channel *Channel) IsAcceptAnthropicBeta(requestBetas []string) bool {
+	if len(requestBetas) == 0 {
+		return true
+	}
+	settings := channel.GetOtherSettings()
+	if len(settings.AllowedAnthropicBeta) == 0 {
+		return true // no restriction
+	}
+	allowedSet := make(map[string]bool, len(settings.AllowedAnthropicBeta))
+	for _, b := range settings.AllowedAnthropicBeta {
+		allowedSet[strings.TrimSpace(b)] = true
+	}
+	for _, b := range requestBetas {
+		if !allowedSet[strings.TrimSpace(b)] {
+			return false
+		}
+	}
+	return true
+}
+
+// FilterAnthropicBeta returns only the betas that are in the channel's allowed list.
+// If the channel has no allowed list (unrestricted), all betas are returned.
+func (channel *Channel) FilterAnthropicBeta(requestBetas []string) []string {
+	if len(requestBetas) == 0 {
+		return nil
+	}
+	settings := channel.GetOtherSettings()
+	if len(settings.AllowedAnthropicBeta) == 0 {
+		return requestBetas // no restriction, pass all
+	}
+	allowedSet := make(map[string]bool, len(settings.AllowedAnthropicBeta))
+	for _, b := range settings.AllowedAnthropicBeta {
+		allowedSet[strings.TrimSpace(b)] = true
+	}
+	var filtered []string
+	for _, b := range requestBetas {
+		if allowedSet[strings.TrimSpace(b)] {
+			filtered = append(filtered, b)
+		}
+	}
+	return filtered
 }
 
 func GetChannelsByIds(ids []int) ([]*Channel, error) {

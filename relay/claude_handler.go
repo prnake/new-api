@@ -41,6 +41,9 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		return types.NewError(err, types.ErrorCodeChannelModelMappedError, types.ErrOptionWithSkipRetry())
 	}
 
+	// Clean null fields in content blocks (e.g. "citations": null from Vertex Anthropic)
+	request.CleanNullFieldsInMessages()
+
 	adaptor := GetAdaptor(info.ApiType)
 	if adaptor == nil {
 		return types.NewError(fmt.Errorf("invalid api type: %d", info.ApiType), types.ErrorCodeInvalidApiType, types.ErrOptionWithSkipRetry())
@@ -53,7 +56,7 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 	}
 
 	if baseModel, effortLevel, ok := reasoning.TrimEffortSuffix(request.Model); ok && effortLevel != "" &&
-		strings.HasPrefix(request.Model, "claude-opus-4-6") {
+		(strings.HasPrefix(request.Model, "claude-opus-4-6") || strings.HasPrefix(request.Model, "claude-sonnet-4-6")) {
 		request.Model = baseModel
 		request.Thinking = &dto.Thinking{
 			Type: "adaptive",
@@ -134,11 +137,16 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		}
 		requestBody = common.ReaderOnly(storage)
 	} else {
+		if service.ShouldApplyAutoCache(c, info, request) {
+			service.ApplyClaudeAutoCache(request)
+		}
+
 		convertedRequest, err := adaptor.ConvertClaudeRequest(c, info, request)
 		if err != nil {
 			return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 		}
 		relaycommon.AppendRequestConversionFromRequest(info, convertedRequest)
+
 		jsonData, err := common.Marshal(convertedRequest)
 		if err != nil {
 			return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())

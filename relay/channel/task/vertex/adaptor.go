@@ -152,6 +152,7 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 	}
 }
 
+
 // BuildRequestBody converts request into Vertex specific format.
 func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayInfo) (io.Reader, error) {
 	v, ok := c.Get("task_request")

@@ -136,7 +136,7 @@ func TestChannelAffinityHitCodexTemplatePassHeadersEffective(t *testing.T) {
 	cacheKeySuffix := buildChannelAffinityCacheKeySuffix(*codexRule, "default", affinityValue)
 
 	cache := getChannelAffinityCache()
-	require.NoError(t, cache.SetWithTTL(cacheKeySuffix, 9527, time.Minute))
+	require.NoError(t, cache.SetWithTTL(cacheKeySuffix, channelAffinityEntry{ChannelID: 9527, KeyIndex: -1}, time.Minute))
 	t.Cleanup(func() {
 		_, _ = cache.DeleteMany([]string{cacheKeySuffix})
 	})
@@ -146,7 +146,7 @@ func TestChannelAffinityHitCodexTemplatePassHeadersEffective(t *testing.T) {
 	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(fmt.Sprintf(`{"prompt_cache_key":"%s"}`, affinityValue)))
 	ctx.Request.Header.Set("Content-Type", "application/json")
 
-	channelID, found := GetPreferredChannelByAffinity(ctx, "gpt-5", "default")
+	channelID, _, found := GetPreferredChannelByAffinity(ctx, "gpt-5", "default")
 	require.True(t, found)
 	require.Equal(t, 9527, channelID)
 

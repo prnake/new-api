@@ -93,10 +93,10 @@ func SyncChannelCache(frequency int) {
 	}
 }
 
-func GetRandomSatisfiedChannel(group string, model string, retry int) (*Channel, error) {
+func GetRandomSatisfiedChannel(group string, model string, retry int, requestBetas []string) (*Channel, error) {
 	// if memory cache is disabled, get channel directly from database
 	if !common.MemoryCacheEnabled {
-		return GetChannel(group, model, retry)
+		return GetChannel(group, model, retry, requestBetas)
 	}
 
 	channelSyncLock.RLock()
@@ -113,6 +113,22 @@ func GetRandomSatisfiedChannel(group string, model string, retry int) (*Channel,
 
 	if len(channels) == 0 {
 		return nil, nil
+	}
+
+	// Filter by anthropic-beta compatibility
+	if len(requestBetas) > 0 {
+		filtered := make([]int, 0, len(channels))
+		for _, channelId := range channels {
+			if ch, ok := channelsIDM[channelId]; ok {
+				if ch.IsAcceptAnthropicBeta(requestBetas) {
+					filtered = append(filtered, channelId)
+				}
+			}
+		}
+		channels = filtered
+		if len(channels) == 0 {
+			return nil, nil
+		}
 	}
 
 	if len(channels) == 1 {

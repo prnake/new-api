@@ -233,6 +233,7 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	ti.Progress = "100%"
 
 	ti.TaskID = taskcommon.EncodeLocalTaskID(op.Name)
+	// Url intentionally left empty — the caller constructs the proxy URL using the public task ID
 
 	if len(op.Response.GenerateVideoResponse.GeneratedVideos) > 0 {
 		if uri := op.Response.GenerateVideoResponse.GeneratedVideos[0].Video.URI; uri != "" {
@@ -244,6 +245,8 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 }
 
 func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
+	// Use GetUpstreamTaskID() to get the real upstream operation name for model extraction.
+	// task.TaskID is now a public task_xxxx ID, no longer a base64-encoded upstream name.
 	upstreamTaskID := task.GetUpstreamTaskID()
 	upstreamName, err := taskcommon.DecodeLocalTaskID(upstreamTaskID)
 	if err != nil {

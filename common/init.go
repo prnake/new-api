@@ -145,8 +145,11 @@ func initConstantEnv() {
 	constant.ErrorLogEnabled = GetEnvOrDefaultBool("ERROR_LOG_ENABLED", false)
 	// 任务轮询时查询的最大数量
 	constant.TaskQueryLimit = GetEnvOrDefault("TASK_QUERY_LIMIT", 1000)
+	constant.SessionAffinityTTL = GetEnvOrDefault("SESSION_AFFINITY_TTL", 900)
+	constant.ClaudeAutoCache = GetEnvOrDefaultBool("CLAUDE_AUTO_CACHE", true)
 	// 异步任务超时时间（分钟），超过此时间未完成的任务将被标记为失败并退款。0 表示禁用。
 	constant.TaskTimeoutMinutes = GetEnvOrDefault("TASK_TIMEOUT_MINUTES", 1440)
+	constant.ForceStreamMaxTokens = uint(GetEnvOrDefault("FORCE_STREAM_MAX_TOKENS", 32768))
 
 	soraPatchStr := GetEnvOrDefaultString("TASK_PRICE_PATCH", "")
 	if soraPatchStr != "" {

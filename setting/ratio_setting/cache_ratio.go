@@ -128,7 +128,7 @@ func UpdateCreateCacheRatioByJSONString(jsonStr string) error {
 func GetCacheRatio(name string) (float64, bool) {
 	ratio, ok := cacheRatioMap.Get(name)
 	if !ok {
-		return 1, false // Default to 1 if not found
+		return 0.1, false // Default to 0.1 if not found
 	}
 	return ratio, true
 }

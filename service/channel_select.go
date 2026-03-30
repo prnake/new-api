@@ -16,6 +16,7 @@ type RetryParam struct {
 	TokenGroup   string
 	ModelName    string
 	Retry        *int
+	RequestBetas []string // parsed anthropic-beta values for filtering
 	resetNextTry bool
 }
 
@@ -86,6 +87,36 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	selectGroup := param.TokenGroup
 	userGroup := common.GetContextKeyString(param.Ctx, constant.ContextKeyUserGroup)
 
+	affinityHash := common.GetContextKeyString(param.Ctx, constant.ContextKeyAffinityHash)
+	if param.GetRetry() == 0 && affinityHash != "" {
+		effectiveGroup := selectGroup
+		if effectiveGroup == "auto" && len(setting.GetAutoGroups()) > 0 {
+			autoGroups := GetUserAutoGroup(userGroup)
+			if len(autoGroups) > 0 {
+				effectiveGroup = autoGroups[0]
+			}
+		}
+
+		if channelId, keyIndex, found := GetAffinityChannelId(effectiveGroup, param.ModelName, affinityHash); found {
+			affinityChannel := ValidateAffinityChannel(channelId, effectiveGroup, param.ModelName)
+			if affinityChannel != nil && affinityChannel.IsAcceptAnthropicBeta(param.RequestBetas) {
+				logger.LogDebug(param.Ctx, "Session affinity hit: group=%s, model=%s, channelId=%d, keyIndex=%d", effectiveGroup, param.ModelName, channelId, keyIndex)
+				common.SetContextKey(param.Ctx, constant.ContextKeyAffinityHit, true)
+				if keyIndex >= 0 {
+					common.SetContextKey(param.Ctx, constant.ContextKeyAffinityKeyIndex, keyIndex)
+				}
+				if selectGroup == "auto" {
+					common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroup, effectiveGroup)
+				}
+				MarkHashAffinityUsed(param.Ctx, effectiveGroup, param.ModelName, affinityHash, channelId)
+				return affinityChannel, effectiveGroup, nil
+			}
+			// Affinity channel is invalid or doesn't support requested betas, clear stale cache
+			ClearAffinityChannelId(effectiveGroup, param.ModelName, affinityHash)
+			logger.LogDebug(param.Ctx, "Session affinity channel invalid, cleared stale cache, fallback to normal selection")
+		}
+	}
+
 	if param.TokenGroup == "auto" {
 		if len(setting.GetAutoGroups()) == 0 {
 			return nil, selectGroup, errors.New("auto groups is not enabled")
@@ -115,7 +146,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			}
 			logger.LogDebug(param.Ctx, "Auto selecting group: %s, priorityRetry: %d", autoGroup, priorityRetry)
 
-			channel, _ = model.GetRandomSatisfiedChannel(autoGroup, param.ModelName, priorityRetry)
+			channel, _ = model.GetRandomSatisfiedChannel(autoGroup, param.ModelName, priorityRetry, param.RequestBetas)
 			if channel == nil {
 				// Current group has no available channel for this model, try next group
 				// 当前分组没有该模型的可用渠道，尝试下一个分组
@@ -153,10 +184,11 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			break
 		}
 	} else {
-		channel, err = model.GetRandomSatisfiedChannel(param.TokenGroup, param.ModelName, param.GetRetry())
+		channel, err = model.GetRandomSatisfiedChannel(param.TokenGroup, param.ModelName, param.GetRetry(), param.RequestBetas)
 		if err != nil {
 			return nil, param.TokenGroup, err
 		}
 	}
+
 	return channel, selectGroup, nil
 }

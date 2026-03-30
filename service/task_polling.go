@@ -390,15 +390,14 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		task.Data = t.Data
 	} else if taskResult, err = adaptor.ParseTaskResult(responseBody); err != nil {
 		return fmt.Errorf("parseTaskResult failed for task %s: %w", taskId, err)
+	} else {
+		task.Data = redactVideoResponseBody(responseBody)
 	}
-
-	task.Data = redactVideoResponseBody(responseBody)
 
 	logger.LogDebug(ctx, fmt.Sprintf("updateVideoSingleTask taskResult: %+v", taskResult))
 
 	now := time.Now().Unix()
 	if taskResult.Status == "" {
-		//taskResult = relaycommon.FailTaskInfo("upstream returned empty status")
 		errorResult := &dto.GeneralErrorResponse{}
 		if err = common.Unmarshal(responseBody, &errorResult); err == nil {
 			openaiError := errorResult.TryToOpenAIError()

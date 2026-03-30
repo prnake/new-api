@@ -101,6 +101,25 @@ func ShouldDisableChannel(channelType int, err *types.NewAPIError) bool {
 	return search
 }
 
+func ShouldSkipRetryByKeyword(err *types.NewAPIError) bool {
+	if err == nil {
+		return false
+	}
+	return ShouldSkipRetryByKeywordMessage(err.Error())
+}
+
+func ShouldSkipRetryByKeywordMessage(message string) bool {
+	if message == "" {
+		return false
+	}
+	if len(operation_setting.AutomaticNoRetryKeywords) == 0 {
+		return false
+	}
+	lowerMessage := strings.ToLower(message)
+	match, _ := AcSearch(lowerMessage, operation_setting.AutomaticNoRetryKeywords, true)
+	return match
+}
+
 func ShouldEnableChannel(newAPIError *types.NewAPIError, status int) bool {
 	if !common.AutomaticEnableChannelEnabled {
 		return false

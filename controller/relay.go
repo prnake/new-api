@@ -177,11 +177,17 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 	}()
 
+	// In CC mode, don't pass betas so retry won't reject channels
+	var retryBetas []string
+	if !common.GetContextKeyBool(c, constant.ContextKeyCCMode) {
+		retryBetas = model.ParseAnthropicBeta(common.GetContextKeyString(c, constant.ContextKeyAnthropicBeta))
+	}
 	retryParam := &service.RetryParam{
-		Ctx:        c,
-		TokenGroup: relayInfo.TokenGroup,
-		ModelName:  relayInfo.OriginModelName,
-		Retry:      common.GetPointer(0),
+		Ctx:          c,
+		TokenGroup:   relayInfo.TokenGroup,
+		ModelName:    relayInfo.OriginModelName,
+		Retry:        common.GetPointer(0),
+		RequestBetas: retryBetas,
 	}
 	relayInfo.RetryIndex = 0
 	relayInfo.LastError = nil
@@ -228,6 +234,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		relayInfo.LastError = newAPIError
 
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
+
+		// Clear session affinity cache so subsequent new requests won't be
+		// directed to the same channel/key (e.g., after 429 rate limit).
+		service.ClearAffinityOnFailure(c)
 
 		if !shouldRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry()) {
 			break
@@ -326,6 +336,9 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 		return true
 	}
 	if types.IsSkipRetryError(openaiErr) {
+		return false
+	}
+	if service.ShouldSkipRetryByKeyword(openaiErr) {
 		return false
 	}
 	if retryTimes <= 0 {
@@ -500,11 +513,17 @@ func RelayTask(c *gin.Context) {
 		}
 	}()
 
+	// In CC mode, don't pass betas so retry won't reject channels
+	var taskRetryBetas []string
+	if !common.GetContextKeyBool(c, constant.ContextKeyCCMode) {
+		taskRetryBetas = model.ParseAnthropicBeta(common.GetContextKeyString(c, constant.ContextKeyAnthropicBeta))
+	}
 	retryParam := &service.RetryParam{
-		Ctx:        c,
-		TokenGroup: relayInfo.TokenGroup,
-		ModelName:  relayInfo.OriginModelName,
-		Retry:      common.GetPointer(0),
+		Ctx:          c,
+		TokenGroup:   relayInfo.TokenGroup,
+		ModelName:    relayInfo.OriginModelName,
+		Retry:        common.GetPointer(0),
+		RequestBetas: taskRetryBetas,
 	}
 
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
@@ -609,6 +628,9 @@ func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *dto.TaskError,
 		return false
 	}
 	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
+		return false
+	}
+	if service.ShouldSkipRetryByKeywordMessage(taskErr.Message) {
 		return false
 	}
 	if retryTimes <= 0 {

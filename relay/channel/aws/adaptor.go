@@ -1,11 +1,13 @@
 package aws
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/claude"
@@ -23,14 +25,16 @@ type ClientMode int
 const (
 	ClientModeApiKey ClientMode = iota + 1
 	ClientModeAKSK
+	ClientModeBedrockProxy
 )
 
 type Adaptor struct {
-	ClientMode ClientMode
-	AwsClient  *bedrockruntime.Client
-	AwsModelId string
-	AwsReq     any
-	IsNova     bool
+	ClientMode  ClientMode
+	AwsClient   *bedrockruntime.Client
+	AwsModelId  string
+	AwsReq      any
+	IsNova      bool
+	ModelPrefix string // 可配置的模型前缀，如 "global", "us", "eu", "apac", "jp" 等
 }
 
 func (a *Adaptor) ConvertGeminiRequest(*gin.Context, *relaycommon.RelayInfo, *dto.GeminiChatRequest) (any, error) {
@@ -88,7 +92,19 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 }
 
+func shouldUseBedrockProxy(info *relaycommon.RelayInfo) bool {
+	return info != nil && info.ApiKey != "" && !strings.Contains(info.ApiKey, "|")
+}
+
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
+	if shouldUseBedrockProxy(info) {
+		a.ClientMode = ClientModeBedrockProxy
+		if info.ChannelBaseUrl == "" {
+			return "", errors.New("bedrock proxy base url is empty")
+		}
+		// Bedrock Proxy 模式使用 AWS SDK 的 BaseEndpoint，URL 由 SDK 自动构造
+		return "", nil
+	}
 	if info.ChannelOtherSettings.AwsKeyType == dto.AwsKeyTypeApiKey {
 		awsModelId := getAwsModelID(info.UpstreamModelName)
 		a.ClientMode = ClientModeApiKey
@@ -105,7 +121,7 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 
 func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *relaycommon.RelayInfo) error {
 	claude.CommonClaudeHeadersOperation(c, req, info)
-	if a.ClientMode == ClientModeApiKey {
+	if a.ClientMode == ClientModeApiKey || a.ClientMode == ClientModeBedrockProxy {
 		req.Set("Authorization", "Bearer "+info.ApiKey)
 	}
 	return nil
@@ -127,6 +143,10 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to convert openai request to claude request")
 	}
+	// Apply auto-cache for OpenAI-compatible path (/v1/chat/completions)
+	if service.ShouldApplyAutoCache(c, info, claudeReq) {
+		service.ApplyClaudeAutoCache(claudeReq)
+	}
 	info.UpstreamModelName = claudeReq.Model
 	return claudeReq, err
 }
@@ -146,11 +166,71 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
+	if shouldUseBedrockProxy(info) {
+		a.ClientMode = ClientModeBedrockProxy
+	}
+
 	if a.ClientMode == ClientModeApiKey {
 		return channel.DoApiRequest(a, c, info, requestBody)
 	} else {
-		return doAwsClientRequest(c, info, a, requestBody)
+		// ClientModeAKSK 和 ClientModeBedrockProxy 都走 AWS SDK 路径
+		result, err := doAwsClientRequest(c, info, a, requestBody)
+		if err != nil {
+			return result, err
+		}
+		addAnthropicBetaToRequest(c, a)
+		return result, err
 	}
+}
+
+func addAnthropicBetaToRequest(c *gin.Context, a *Adaptor) {
+	anthropicBeta := c.Request.Header.Get("anthropic-beta")
+	if anthropicBeta == "" {
+		return
+	}
+
+	if req, ok := a.AwsReq.(*bedrockruntime.InvokeModelInput); ok {
+		if newBody := addAnthropicBetaToBody(req.Body, anthropicBeta); newBody != nil {
+			req.Body = newBody
+		}
+		return
+	}
+
+	if req, ok := a.AwsReq.(*bedrockruntime.InvokeModelWithResponseStreamInput); ok {
+		if newBody := addAnthropicBetaToBody(req.Body, anthropicBeta); newBody != nil {
+			req.Body = newBody
+		}
+		return
+	}
+}
+
+func addAnthropicBetaToBody(bodyBytes []byte, anthropicBeta string) []byte {
+	if bodyBytes == nil || len(bodyBytes) == 0 {
+		return nil
+	}
+
+	var body map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &body); err != nil {
+		common.SysLog(fmt.Sprintf("Failed to unmarshal request body for anthropic-beta: %v", err))
+		return nil
+	}
+
+	features := strings.Split(anthropicBeta, ",")
+	filtered := make([]string, 0, len(features))
+	for i := range features {
+		features[i] = strings.TrimSpace(features[i])
+		if features[i] != "" {
+			filtered = append(filtered, features[i])
+		}
+	}
+	body["anthropic_beta"] = filtered
+
+	newBodyBytes, err := json.Marshal(body)
+	if err != nil {
+		common.SysLog(fmt.Sprintf("Failed to marshal request body with anthropic-beta: %v", err))
+		return nil
+	}
+	return newBodyBytes
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
@@ -158,13 +238,14 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 		claudeAdaptor := claude.Adaptor{}
 		usage, err = claudeAdaptor.DoResponse(c, resp, info)
 	} else {
+		// ClientModeAKSK 和 ClientModeBedrockProxy 都走 AWS SDK 响应处理路径
 		if a.IsNova {
 			err, usage = handleNovaRequest(c, info, a)
 		} else {
 			if info.IsStream {
-				err, usage = awsStreamHandler(c, info, a)
+				err, usage = awsStreamHandler(c, info, a, resp)
 			} else {
-				err, usage = awsHandler(c, info, a)
+				err, usage = awsHandler(c, info, a, resp)
 			}
 		}
 	}

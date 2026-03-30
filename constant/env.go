@@ -16,7 +16,10 @@ var NotificationLimitDurationMinute int
 var GenerateDefaultToken bool
 var ErrorLogEnabled bool
 var TaskQueryLimit int
+var SessionAffinityTTL int
+var ClaudeAutoCache bool
 var TaskTimeoutMinutes int
+var ForceStreamMaxTokens uint // max_tokens threshold to force stream mode
 
 // temporary variable for sora patch, will be removed in future
 var TaskPricePatches []string

@@ -15,6 +15,10 @@ var AutomaticDisableKeywords = []string{
 	"Your account is not authorized",
 }
 
+var AutomaticNoRetryKeywords = []string{
+	"Input should be a valid string",
+}
+
 func AutomaticDisableKeywordsToString() string {
 	return strings.Join(AutomaticDisableKeywords, "\n")
 }
@@ -27,6 +31,22 @@ func AutomaticDisableKeywordsFromString(s string) {
 		k = strings.ToLower(k)
 		if k != "" {
 			AutomaticDisableKeywords = append(AutomaticDisableKeywords, k)
+		}
+	}
+}
+
+func AutomaticNoRetryKeywordsToString() string {
+	return strings.Join(AutomaticNoRetryKeywords, "\n")
+}
+
+func AutomaticNoRetryKeywordsFromString(s string) {
+	AutomaticNoRetryKeywords = []string{}
+	ak := strings.Split(s, "\n")
+	for _, k := range ak {
+		k = strings.TrimSpace(k)
+		k = strings.ToLower(k)
+		if k != "" {
+			AutomaticNoRetryKeywords = append(AutomaticNoRetryKeywords, k)
 		}
 	}
 }
