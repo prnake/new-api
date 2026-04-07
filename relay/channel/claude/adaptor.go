@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel"
@@ -73,10 +74,32 @@ func shouldAppendClaudeBetaQuery(info *relaycommon.RelayInfo) bool {
 
 func CommonClaudeHeadersOperation(c *gin.Context, req *http.Header, info *relaycommon.RelayInfo) {
 	// common headers operation
-	// Note: In CC mode, the anthropic-beta header is already filtered in SetupContextForSelectedChannel
 	anthropicBeta := c.Request.Header.Get("anthropic-beta")
 	if anthropicBeta != "" {
-		req.Set("anthropic-beta", anthropicBeta)
+		// Defense-in-depth: always filter anthropic-beta by the channel's allowed list,
+		// even if the distributor already filtered. This catches edge cases in retry/fallback
+		// paths where the header may not have been filtered for the current channel.
+		if len(info.ChannelOtherSettings.AllowedAnthropicBeta) > 0 {
+			allowedSet := make(map[string]bool, len(info.ChannelOtherSettings.AllowedAnthropicBeta))
+			for _, b := range info.ChannelOtherSettings.AllowedAnthropicBeta {
+				allowedSet[strings.TrimSpace(b)] = true
+			}
+			var filtered []string
+			for _, b := range strings.Split(anthropicBeta, ",") {
+				b = strings.TrimSpace(b)
+				if b != "" && allowedSet[b] {
+					filtered = append(filtered, b)
+				}
+			}
+			if len(filtered) > 0 {
+				anthropicBeta = strings.Join(filtered, ", ")
+			} else {
+				anthropicBeta = ""
+			}
+		}
+		if anthropicBeta != "" {
+			req.Set("anthropic-beta", anthropicBeta)
+		}
 	}
 	model_setting.GetClaudeSettings().WriteHeaders(info.OriginModelName, req)
 }

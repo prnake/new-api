@@ -36,6 +36,20 @@ func Distribute() func(c *gin.Context) {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
 			return
 		}
+		// Detect -cc suffix for CC mode early, before any channel selection path.
+		// This must run for ALL paths (specific channel, normal selection, etc.)
+		ccMode := strings.HasSuffix(modelRequest.Model, "-cc")
+		if ccMode {
+			common.SetContextKey(c, constant.ContextKeyCCMode, true)
+		}
+
+		// Store anthropic-beta header in context for downstream filtering.
+		// Must also be set before any path divergence.
+		anthropicBeta := c.Request.Header.Get("anthropic-beta")
+		if anthropicBeta != "" {
+			common.SetContextKey(c, constant.ContextKeyAnthropicBeta, anthropicBeta)
+		}
+
 		if ok {
 			id, err := strconv.Atoi(channelId.(string))
 			if err != nil {
@@ -80,20 +94,8 @@ func Distribute() func(c *gin.Context) {
 					return
 				}
 
-				// Detect -cc suffix for CC mode (model name kept as-is for channel lookup)
-				ccMode := strings.HasSuffix(modelRequest.Model, "-cc")
-				if ccMode {
-					common.SetContextKey(c, constant.ContextKeyCCMode, true)
-				}
-
 				var selectGroup string
 				usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
-
-				// Store anthropic-beta header in context for downstream filtering
-				anthropicBeta := c.Request.Header.Get("anthropic-beta")
-				if anthropicBeta != "" {
-					common.SetContextKey(c, constant.ContextKeyAnthropicBeta, anthropicBeta)
-				}
 
 				// check path is /pg/chat/completions
 				if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") {
