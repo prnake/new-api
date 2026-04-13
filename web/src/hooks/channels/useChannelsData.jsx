@@ -936,7 +936,7 @@ export const useChannelsData = () => {
         return Promise.resolve();
       }
 
-      const { success, message, time } = res.data;
+      const { success, message, time, error_code } = res.data;
 
       // 更新测试结果
       setModelTestResults((prev) => ({
@@ -946,6 +946,7 @@ export const useChannelsData = () => {
           message,
           time: time || 0,
           timestamp: Date.now(),
+          errorCode: error_code || null,
         },
       }));
 
@@ -973,7 +974,7 @@ export const useChannelsData = () => {
           );
         }
       } else {
-        showError(`${t('模型')} ${model}: ${message}`);
+        showError(message);
       }
     } catch (error) {
       // 处理网络错误
@@ -985,9 +986,10 @@ export const useChannelsData = () => {
           message: error.message || t('网络错误'),
           time: 0,
           timestamp: Date.now(),
+          errorCode: null,
         },
       }));
-      showError(`${t('模型')} ${model}: ${error.message || t('测试失败')}`);
+      showError(error.message || t('测试失败'));
     } finally {
       // 从正在测试的模型集合中移除
       setTestingModels((prev) => {

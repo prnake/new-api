@@ -76,4 +76,5 @@ const (
 	// ContextKeyCCMode indicates the request uses -cc suffix model,
 	// which means anthropic-beta should be filtered (not rejected) for incompatible channels
 	ContextKeyCCMode ContextKey = "cc_mode"
+	ContextKeyIsStream ContextKey = "is_stream"
 )
