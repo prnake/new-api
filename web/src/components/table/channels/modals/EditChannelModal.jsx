@@ -206,6 +206,7 @@ const EditChannelModal = (props) => {
     allow_service_tier: false,
     disable_store: false, // false = 允许透传（默认开启）
     allow_safety_identifier: false,
+    allowed_anthropic_beta: [],
     allow_include_obfuscation: false,
     allow_inference_geo: false,
     claude_beta_query: false,
@@ -886,6 +887,8 @@ const EditChannelModal = (props) => {
           data.disable_store = parsedSettings.disable_store || false;
           data.allow_safety_identifier =
             parsedSettings.allow_safety_identifier || false;
+          data.allowed_anthropic_beta =
+            parsedSettings.allowed_anthropic_beta || [];
           data.allow_include_obfuscation =
             parsedSettings.allow_include_obfuscation || false;
           data.allow_inference_geo =
@@ -917,6 +920,7 @@ const EditChannelModal = (props) => {
           data.allow_service_tier = false;
           data.disable_store = false;
           data.allow_safety_identifier = false;
+          data.allowed_anthropic_beta = [];
           data.allow_include_obfuscation = false;
           data.allow_inference_geo = false;
           data.claude_beta_query = false;
@@ -934,6 +938,7 @@ const EditChannelModal = (props) => {
         data.allow_service_tier = false;
         data.disable_store = false;
         data.allow_safety_identifier = false;
+        data.allowed_anthropic_beta = [];
         data.allow_include_obfuscation = false;
         data.allow_inference_geo = false;
         data.claude_beta_query = false;
@@ -1780,6 +1785,11 @@ const EditChannelModal = (props) => {
       }
     }
 
+    // type === 14 (Claude), 20 (OpenRouter), 33 (AWS), 41 (Vertex): 保存 allowed_anthropic_beta
+    if (localInputs.type === 14 || localInputs.type === 20 || localInputs.type === 33 || localInputs.type === 41) {
+      settings.allowed_anthropic_beta = localInputs.allowed_anthropic_beta || [];
+    }
+
     settings.upstream_model_update_check_enabled =
       localInputs.upstream_model_update_check_enabled === true;
     settings.upstream_model_update_auto_sync_enabled =
@@ -1821,6 +1831,7 @@ const EditChannelModal = (props) => {
     delete localInputs.allow_service_tier;
     delete localInputs.disable_store;
     delete localInputs.allow_safety_identifier;
+    delete localInputs.allowed_anthropic_beta;
     delete localInputs.allow_include_obfuscation;
     delete localInputs.allow_inference_geo;
     delete localInputs.claude_beta_query;
@@ -2492,6 +2503,22 @@ const EditChannelModal = (props) => {
 
                   {inputs.type === 14 && (
                     <Form.Switch field='claude_beta_query' label={t('Claude 强制 beta=true')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelOtherSettingsChange('claude_beta_query', value)} extraText={t('开启后，该渠道请求 Claude 时将强制追加 ?beta=true（无需客户端手动传参）')} />
+                  )}
+
+                  {/* Anthropic Beta 限制 - Claude / OpenRouter / AWS / Vertex 渠道 */}
+                  {(inputs.type === 14 || inputs.type === 20 || inputs.type === 33 || inputs.type === 41) && (
+                    <>
+                      <div className='mt-4 mb-2 text-sm font-medium text-gray-700'>
+                        {t('Anthropic Beta 限制')}
+                      </div>
+                      <Form.TagInput
+                        field='allowed_anthropic_beta'
+                        label={t('允许的 anthropic_beta')}
+                        placeholder={t('输入 beta 标识后按回车添加，留空则不限制')}
+                        allowDuplicates={false}
+                        showClear
+                      />
+                    </>
                   )}
 
                   {inputs.type === 1 && (
