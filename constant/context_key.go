@@ -71,7 +71,8 @@ const (
 	// ContextKeyLanguage stores the user's language preference for i18n
 	ContextKeyLanguage ContextKey = "language"
 
-	ContextKeyAnthropicBeta ContextKey = "anthropic_beta"
+	ContextKeyAnthropicBeta         ContextKey = "anthropic_beta"
+	ContextKeyOriginalAnthropicBeta ContextKey = "original_anthropic_beta"
 
 	// ContextKeyCCMode indicates the request uses -cc suffix model,
 	// which means anthropic-beta should be filtered (not rejected) for incompatible channels

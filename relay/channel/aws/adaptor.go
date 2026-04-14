@@ -178,15 +178,35 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 		if err != nil {
 			return result, err
 		}
-		addAnthropicBetaToRequest(c, a)
+		addAnthropicBetaToRequest(c, info, a)
 		return result, err
 	}
 }
 
-func addAnthropicBetaToRequest(c *gin.Context, a *Adaptor) {
+func addAnthropicBetaToRequest(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) {
 	anthropicBeta := c.Request.Header.Get("anthropic-beta")
 	if anthropicBeta == "" {
 		return
+	}
+
+	// Filter betas against channel's AllowedAnthropicBeta list (defense-in-depth,
+	// consistent with the Claude direct adaptor's CommonClaudeHeadersOperation).
+	if len(info.ChannelOtherSettings.AllowedAnthropicBeta) > 0 {
+		allowedSet := make(map[string]bool, len(info.ChannelOtherSettings.AllowedAnthropicBeta))
+		for _, b := range info.ChannelOtherSettings.AllowedAnthropicBeta {
+			allowedSet[strings.TrimSpace(b)] = true
+		}
+		var filtered []string
+		for _, b := range strings.Split(anthropicBeta, ",") {
+			b = strings.TrimSpace(b)
+			if b != "" && allowedSet[b] {
+				filtered = append(filtered, b)
+			}
+		}
+		if len(filtered) == 0 {
+			return
+		}
+		anthropicBeta = strings.Join(filtered, ", ")
 	}
 
 	if req, ok := a.AwsReq.(*bedrockruntime.InvokeModelInput); ok {

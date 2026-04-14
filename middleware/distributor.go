@@ -48,6 +48,9 @@ func Distribute() func(c *gin.Context) {
 		anthropicBeta := c.Request.Header.Get("anthropic-beta")
 		if anthropicBeta != "" {
 			common.SetContextKey(c, constant.ContextKeyAnthropicBeta, anthropicBeta)
+			// Keep an immutable copy so retry/fallback can re-filter from the
+			// original value instead of the already-filtered c.Request.Header.
+			common.SetContextKey(c, constant.ContextKeyOriginalAnthropicBeta, anthropicBeta)
 		}
 
 		if ok {
@@ -383,9 +386,12 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 		return types.NewError(errors.New("channel is nil"), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
 
-	// In CC mode, filter anthropic-beta header to only include betas supported by this channel
+	// In CC mode, filter anthropic-beta header to only include betas supported by this channel.
+	// Always re-filter from the original (immutable) value so that retry/fallback to a
+	// different channel is not constrained by the previous channel's allowed list.
 	if common.GetContextKeyBool(c, constant.ContextKeyCCMode) {
-		if origBeta := c.Request.Header.Get("anthropic-beta"); origBeta != "" {
+		origBeta := common.GetContextKeyString(c, constant.ContextKeyOriginalAnthropicBeta)
+		if origBeta != "" {
 			filtered := channel.FilterAnthropicBeta(model.ParseAnthropicBeta(origBeta))
 			if len(filtered) > 0 {
 				c.Request.Header.Set("anthropic-beta", strings.Join(filtered, ", "))
