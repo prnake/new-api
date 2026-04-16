@@ -56,30 +56,47 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 	}
 
 	if baseModel, effortLevel, ok := reasoning.TrimEffortSuffix(request.Model); ok && effortLevel != "" &&
-		(strings.HasPrefix(request.Model, "claude-opus-4-6") || strings.HasPrefix(request.Model, "claude-sonnet-4-6")) {
+		model_setting.IsClaudeAdaptiveThinkingModel(request.Model) {
 		request.Model = baseModel
 		request.Thinking = &dto.Thinking{
 			Type: "adaptive",
 		}
 		request.OutputConfig = json.RawMessage(fmt.Sprintf(`{"effort":"%s"}`, effortLevel))
-		request.Temperature = common.GetPointer[float64](1.0)
+		if model_setting.IsClaudeOpus47Family(request.Model) {
+			// Opus/Sonnet 4.7 reject non-default temperature/top_p/top_k with 400
+			request.Temperature = nil
+			request.TopP = nil
+			request.TopK = nil
+		} else {
+			request.Temperature = common.GetPointer[float64](1.0)
+		}
 		info.UpstreamModelName = request.Model
 	} else if model_setting.GetClaudeSettings().ThinkingAdapterEnabled &&
 		strings.HasSuffix(request.Model, "-thinking") {
 		if request.Thinking == nil {
-			// 因为BudgetTokens 必须大于1024
-			if request.MaxTokens == nil || *request.MaxTokens < 1280 {
-				request.MaxTokens = common.GetPointer[uint](1280)
-			}
+			baseModel := strings.TrimSuffix(request.Model, "-thinking")
+			if model_setting.IsClaudeOpus47Family(baseModel) {
+				// Opus/Sonnet 4.7 reject thinking.type="enabled"; use adaptive at high effort.
+				request.Thinking = &dto.Thinking{Type: "adaptive"}
+				request.OutputConfig = json.RawMessage(`{"effort":"high"}`)
+				request.Temperature = nil
+				request.TopP = nil
+				request.TopK = nil
+			} else {
+				// 因为BudgetTokens 必须大于1024
+				if request.MaxTokens == nil || *request.MaxTokens < 1280 {
+					request.MaxTokens = common.GetPointer[uint](1280)
+				}
 
-			// BudgetTokens 为 max_tokens 的 80%
-			request.Thinking = &dto.Thinking{
-				Type:         "enabled",
-				BudgetTokens: common.GetPointer[int](int(float64(*request.MaxTokens) * model_setting.GetClaudeSettings().ThinkingAdapterBudgetTokensPercentage)),
+				// BudgetTokens 为 max_tokens 的 80%
+				request.Thinking = &dto.Thinking{
+					Type:         "enabled",
+					BudgetTokens: common.GetPointer[int](int(float64(*request.MaxTokens) * model_setting.GetClaudeSettings().ThinkingAdapterBudgetTokensPercentage)),
+				}
+				// TODO: 临时处理
+				// https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking#important-considerations-when-using-extended-thinking
+				request.Temperature = common.GetPointer[float64](1.0)
 			}
-			// TODO: 临时处理
-			// https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking#important-considerations-when-using-extended-thinking
-			request.Temperature = common.GetPointer[float64](1.0)
 		}
 		if !model_setting.ShouldPreserveThinkingSuffix(info.OriginModelName) {
 			request.Model = strings.TrimSuffix(request.Model, "-thinking")

@@ -87,3 +87,17 @@ func (c *ClaudeSettings) GetDefaultMaxTokens(model string) int {
 	}
 	return c.DefaultMaxTokens["default"]
 }
+
+// IsClaudeAdaptiveThinkingModel reports whether the model family defaults to
+// adaptive thinking when an effort suffix is present (opus-4-6/4-7, sonnet-4-6/4-7).
+func IsClaudeAdaptiveThinkingModel(model string) bool {
+	return strings.HasPrefix(model, "claude-opus-4-6") ||
+		strings.HasPrefix(model, "claude-sonnet-4-6") ||
+		strings.HasPrefix(model, "claude-opus-4-7")
+}
+
+// IsClaudeOpus47Family reports whether the model belongs to the Opus/Sonnet 4.7
+// family, which rejects non-default temperature/top_p/top_k and thinking.type="enabled".
+func IsClaudeOpus47Family(model string) bool {
+	return strings.HasPrefix(model, "claude-opus-4-7")
+}
