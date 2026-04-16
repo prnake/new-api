@@ -162,6 +162,8 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 		claudeRequest.OutputConfig = json.RawMessage(fmt.Sprintf(`{"effort":"%s"}`, effortLevel))
 		if model_setting.IsClaudeOpus47Family(baseModel) {
 			// Opus/Sonnet 4.7 reject non-default temperature/top_p/top_k with 400
+			// and defaults display to "omitted"; restore the 4.6 visible summary.
+			claudeRequest.Thinking.Display = "summarized"
 			claudeRequest.Temperature = nil
 			claudeRequest.TopP = nil
 			claudeRequest.TopK = nil
@@ -175,7 +177,7 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 		trimmedModel := strings.TrimSuffix(textRequest.Model, "-thinking")
 		if model_setting.IsClaudeOpus47Family(trimmedModel) {
 			// Opus/Sonnet 4.7 reject thinking.type="enabled"; use adaptive at high effort.
-			claudeRequest.Thinking = &dto.Thinking{Type: "adaptive"}
+			claudeRequest.Thinking = &dto.Thinking{Type: "adaptive", Display: "summarized"}
 			claudeRequest.OutputConfig = json.RawMessage(`{"effort":"high"}`)
 			claudeRequest.Temperature = nil
 			claudeRequest.TopP = nil
@@ -274,7 +276,7 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 				formatMessages = formatMessages[:len(formatMessages)-1]
 			}
 		}
-		if fmtMessage.Content == nil {
+		if fmtMessage.Content == nil || (fmtMessage.IsStringContent() && fmtMessage.StringContent() == "") {
 			fmtMessage.SetStringContent("...")
 		}
 		formatMessages = append(formatMessages, fmtMessage)
@@ -290,14 +292,16 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 		if message.Role == "system" {
 			// 根据Claude API规范，system字段使用数组格式更有通用性
 			if message.IsStringContent() {
-				systemMessages = append(systemMessages, dto.ClaudeMediaMessage{
-					Type: "text",
-					Text: common.GetPointer[string](message.StringContent()),
-				})
+				if text := message.StringContent(); text != "" {
+					systemMessages = append(systemMessages, dto.ClaudeMediaMessage{
+						Type: "text",
+						Text: common.GetPointer[string](text),
+					})
+				}
 			} else {
 				// 支持复合内容的system消息（虽然不常见，但需要考虑完整性）
 				for _, ctx := range message.ParseContent() {
-					if ctx.Type == "text" {
+					if ctx.Type == "text" && ctx.Text != "" {
 						systemMessages = append(systemMessages, dto.ClaudeMediaMessage{
 							Type: "text",
 							Text: common.GetPointer[string](ctx.Text),
@@ -355,16 +359,22 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 					}
 				}
 			} else if message.IsStringContent() && message.ToolCalls == nil {
-				claudeMessage.Content = message.StringContent()
+				text := message.StringContent()
+				if text == "" {
+					text = "..."
+				}
+				claudeMessage.Content = text
 			} else {
 				claudeMediaMessages := make([]dto.ClaudeMediaMessage, 0)
 				for _, mediaMessage := range message.ParseContent() {
 					switch mediaMessage.Type {
 					case "text":
-						claudeMediaMessages = append(claudeMediaMessages, dto.ClaudeMediaMessage{
-							Type: "text",
-							Text: common.GetPointer[string](mediaMessage.Text),
-						})
+						if mediaMessage.Text != "" {
+							claudeMediaMessages = append(claudeMediaMessages, dto.ClaudeMediaMessage{
+								Type: "text",
+								Text: common.GetPointer[string](mediaMessage.Text),
+							})
+						}
 					default:
 						source := mediaMessage.ToFileSource()
 						if source == nil {

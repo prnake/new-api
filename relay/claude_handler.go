@@ -64,6 +64,8 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		request.OutputConfig = json.RawMessage(fmt.Sprintf(`{"effort":"%s"}`, effortLevel))
 		if model_setting.IsClaudeOpus47Family(request.Model) {
 			// Opus/Sonnet 4.7 reject non-default temperature/top_p/top_k with 400
+			// and defaults display to "omitted"; restore the 4.6 visible summary.
+			request.Thinking.Display = "summarized"
 			request.Temperature = nil
 			request.TopP = nil
 			request.TopK = nil
@@ -77,7 +79,7 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 			baseModel := strings.TrimSuffix(request.Model, "-thinking")
 			if model_setting.IsClaudeOpus47Family(baseModel) {
 				// Opus/Sonnet 4.7 reject thinking.type="enabled"; use adaptive at high effort.
-				request.Thinking = &dto.Thinking{Type: "adaptive"}
+				request.Thinking = &dto.Thinking{Type: "adaptive", Display: "summarized"}
 				request.OutputConfig = json.RawMessage(`{"effort":"high"}`)
 				request.Temperature = nil
 				request.TopP = nil
