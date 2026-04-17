@@ -191,7 +191,7 @@ func updateSunoTasks(ctx context.Context, channelId int, taskIds []string, taskM
 	if adaptor == nil {
 		return errors.New("adaptor not found")
 	}
-	proxy := ch.GetSetting().Proxy
+	proxy := ResolveChannelProxy(ch.GetSetting().Proxy, ch.Id, ch.Key)
 	resp, err := adaptor.FetchTask(*ch.BaseURL, ch.Key, map[string]any{
 		"ids": taskIds,
 	}, proxy)
@@ -346,7 +346,6 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	if ch.GetBaseURL() != "" {
 		baseURL = ch.GetBaseURL()
 	}
-	proxy := ch.GetSetting().Proxy
 
 	task := taskM[taskId]
 	if task == nil {
@@ -359,6 +358,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	if privateData.Key != "" {
 		key = privateData.Key
 	}
+	proxy := ResolveChannelProxy(ch.GetSetting().Proxy, ch.Id, key)
 	resp, err := adaptor.FetchTask(baseURL, key, map[string]any{
 		"task_id": task.GetUpstreamTaskID(),
 		"action":  task.Action,

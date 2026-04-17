@@ -110,6 +110,8 @@ const SystemSetting = () => {
     'fetch_setting.ip_list': [],
     'fetch_setting.allowed_ports': [],
     'fetch_setting.apply_ip_filter_for_domain': true,
+    GlobalProxy: '',
+    GlobalProxySessionTTL: '',
   });
 
   const [originInputs, setOriginInputs] = useState({});
@@ -400,6 +402,25 @@ const SystemSetting = () => {
     if (options.length > 0) {
       await updateOptions(options);
     }
+  };
+
+  const submitGlobalProxy = async () => {
+    const options = [
+      { key: 'GlobalProxy', value: (inputs.GlobalProxy || '').trim() },
+    ];
+    const ttlRaw = String(inputs.GlobalProxySessionTTL ?? '').trim();
+    if (ttlRaw !== '') {
+      const ttlNum = Number(ttlRaw);
+      if (!Number.isFinite(ttlNum) || ttlNum < 0) {
+        showError(t('会话保持时长必须为非负整数（秒）'));
+        return;
+      }
+      options.push({
+        key: 'GlobalProxySessionTTL',
+        value: String(Math.trunc(ttlNum)),
+      });
+    }
+    await updateOptions(options);
   };
 
   const handleAddEmail = () => {
@@ -980,6 +1001,43 @@ const SystemSetting = () => {
 
                   <Button onClick={submitSSRF} style={{ marginTop: 16 }}>
                     {t('更新SSRF防护设置')}
+                  </Button>
+                </Form.Section>
+              </Card>
+
+              <Card>
+                <Form.Section text={t('全局代理设置')}>
+                  <Text extraText={t('全局代理详细说明')}>
+                    {t('配置所有渠道出站请求默认使用的代理，支持 %s 会话占位符')}
+                  </Text>
+                  <Row
+                    gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
+                    style={{ marginTop: 16 }}
+                  >
+                    <Col xs={24} sm={24} md={16} lg={16} xl={16}>
+                      <Form.Input
+                        field='GlobalProxy'
+                        label={t('全局代理地址')}
+                        placeholder={t(
+                          '例如 http://user-%s:pass@proxy.example.com:8080',
+                        )}
+                        extraText={t('全局代理地址说明')}
+                      />
+                    </Col>
+                    <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+                      <Form.Input
+                        field='GlobalProxySessionTTL'
+                        label={t('会话保持时长（秒）')}
+                        placeholder={t('默认 3600')}
+                        extraText={t('会话保持时长说明')}
+                      />
+                    </Col>
+                  </Row>
+                  <Button
+                    onClick={submitGlobalProxy}
+                    style={{ marginTop: 16 }}
+                  >
+                    {t('更新全局代理设置')}
                   </Button>
                 </Form.Section>
               </Card>

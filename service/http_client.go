@@ -21,6 +21,12 @@ var (
 	proxyClients    = make(map[string]*http.Client)
 )
 
+// proxyClientCacheLimit caps the number of cached proxy clients. When the
+// cache is full, all entries are closed and flushed; in-flight requests still
+// hold their own client reference so are unaffected. This bound matters for
+// session-sticky proxies where the URL rotates on each TTL window.
+const proxyClientCacheLimit = 1024
+
 func checkRedirect(req *http.Request, via []*http.Request) error {
 	fetchSetting := system_setting.GetFetchSetting()
 	urlStr := req.URL.String()
@@ -74,6 +80,12 @@ func GetHttpClientWithProxy(proxyURL string) (*http.Client, error) {
 func ResetProxyClientCache() {
 	proxyClientLock.Lock()
 	defer proxyClientLock.Unlock()
+	flushProxyClientsLocked()
+}
+
+// flushProxyClientsLocked closes idle connections for every cached proxy
+// client and discards the cache. Caller must hold proxyClientLock.
+func flushProxyClientsLocked() {
 	for _, client := range proxyClients {
 		if transport, ok := client.Transport.(*http.Transport); ok && transport != nil {
 			transport.CloseIdleConnections()
@@ -120,6 +132,9 @@ func NewProxyHttpClient(proxyURL string) (*http.Client, error) {
 		}
 		client.Timeout = time.Duration(common.RelayTimeout) * time.Second
 		proxyClientLock.Lock()
+		if len(proxyClients) >= proxyClientCacheLimit {
+			flushProxyClientsLocked()
+		}
 		proxyClients[proxyURL] = client
 		proxyClientLock.Unlock()
 		return client, nil
@@ -159,6 +174,9 @@ func NewProxyHttpClient(proxyURL string) (*http.Client, error) {
 		client := &http.Client{Transport: transport, CheckRedirect: checkRedirect}
 		client.Timeout = time.Duration(common.RelayTimeout) * time.Second
 		proxyClientLock.Lock()
+		if len(proxyClients) >= proxyClientCacheLimit {
+			flushProxyClientsLocked()
+		}
 		proxyClients[proxyURL] = client
 		proxyClientLock.Unlock()
 		return client, nil

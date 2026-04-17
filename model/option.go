@@ -73,6 +73,8 @@ func InitOptionMap() {
 	common.OptionMap["WorkerUrl"] = system_setting.WorkerUrl
 	common.OptionMap["WorkerValidKey"] = system_setting.WorkerValidKey
 	common.OptionMap["WorkerAllowHttpImageRequestEnabled"] = strconv.FormatBool(system_setting.WorkerAllowHttpImageRequestEnabled)
+	common.OptionMap["GlobalProxy"] = system_setting.GetGlobalProxy()
+	common.OptionMap["GlobalProxySessionTTL"] = strconv.Itoa(system_setting.GetGlobalProxySessionTTL())
 	common.OptionMap["PayAddress"] = ""
 	common.OptionMap["CustomCallbackAddress"] = ""
 	common.OptionMap["EpayId"] = ""
@@ -340,6 +342,14 @@ func updateOptionMap(key string, value string) (err error) {
 		system_setting.WorkerUrl = value
 	case "WorkerValidKey":
 		system_setting.WorkerValidKey = value
+	case "GlobalProxy":
+		system_setting.SetGlobalProxy(strings.TrimSpace(value))
+	case "GlobalProxySessionTTL":
+		ttl, parseErr := strconv.Atoi(strings.TrimSpace(value))
+		if parseErr != nil {
+			ttl = system_setting.DefaultGlobalProxySessionTTL
+		}
+		system_setting.SetGlobalProxySessionTTL(ttl)
 	case "PayAddress":
 		operation_setting.PayAddress = value
 	case "Chats":

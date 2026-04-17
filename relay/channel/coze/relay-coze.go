@@ -281,8 +281,9 @@ func getChatDetail(a *Adaptor, c *gin.Context, info *relaycommon.RelayInfo) (*ht
 func doRequest(req *http.Request, info *relaycommon.RelayInfo) (*http.Response, error) {
 	var client *http.Client
 	var err error // 声明 err 变量
-	if info.ChannelSetting.Proxy != "" {
-		client, err = service.NewProxyHttpClient(info.ChannelSetting.Proxy)
+	proxyURL := service.ResolveChannelProxy(info.ChannelSetting.Proxy, info.ChannelId, info.ApiKey)
+	if proxyURL != "" {
+		client, err = service.NewProxyHttpClient(proxyURL)
 		if err != nil {
 			return nil, fmt.Errorf("new proxy http client failed: %w", err)
 		}

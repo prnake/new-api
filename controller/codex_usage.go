@@ -59,7 +59,7 @@ func GetCodexChannelUsage(c *gin.Context) {
 		return
 	}
 
-	client, err := service.NewProxyHttpClient(ch.GetSetting().Proxy)
+	client, err := service.NewProxyHttpClientForChannel(ch.GetSetting().Proxy, ch.Id, ch.Key)
 	if err != nil {
 		common.ApiError(c, err)
 		return
