@@ -9,9 +9,11 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relay/channel/vertex"
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
@@ -25,9 +27,9 @@ type claudeCountTokensMeta struct {
 }
 
 // RelayClaudeCountTokens proxies POST /v1/messages/count_tokens to a random
-// Anthropic-typed upstream channel, reusing the normal retry priority logic.
-// The endpoint is treated as a free utility — no quota is pre-consumed or
-// settled. The request body is forwarded verbatim.
+// Claude-capable upstream channel (Anthropic native or Vertex AI), reusing the
+// normal retry priority logic. The endpoint is treated as a free utility — no
+// quota is pre-consumed or settled. The request body is forwarded verbatim.
 func RelayClaudeCountTokens(c *gin.Context) {
 	storage, err := common.GetBodyStorage(c)
 	if err != nil {
@@ -98,9 +100,9 @@ func RelayClaudeCountTokens(c *gin.Context) {
 			break
 		}
 
-		// count_tokens is only defined by the native Anthropic API; skip
-		// channels that don't speak it directly (AWS Bedrock, Vertex, etc.).
-		if channel.Type != constant.ChannelTypeAnthropic {
+		// count_tokens has two supported upstream forms: the native Anthropic
+		// API and Vertex AI. Skip any other channel type.
+		if channel.Type != constant.ChannelTypeAnthropic && channel.Type != constant.ChannelTypeVertexAi {
 			continue
 		}
 
@@ -110,7 +112,7 @@ func RelayClaudeCountTokens(c *gin.Context) {
 		}
 		addUsedChannel(c, channel.Id)
 
-		status, respBody, reqErr := forwardClaudeCountTokens(c, channel, rawBody)
+		status, respBody, reqErr := forwardClaudeCountTokens(c, channel, rawBody, modelName)
 		if reqErr != nil {
 			logger.LogError(c, fmt.Sprintf("count_tokens forward failed (channel #%d): %s", channel.Id, reqErr.Error()))
 			continue
@@ -136,7 +138,7 @@ func RelayClaudeCountTokens(c *gin.Context) {
 
 	if lastStatus == 0 {
 		writeClaudeCountError(c, http.StatusServiceUnavailable, "api_error",
-			fmt.Sprintf("no available anthropic channel for model %s", modelName))
+			fmt.Sprintf("no available anthropic/vertex channel for model %s", modelName))
 		return
 	}
 	c.Data(lastStatus, "application/json", lastBody)
@@ -159,7 +161,18 @@ func writeClaudeCountError(c *gin.Context, status int, errType, message string) 
 	})
 }
 
-func forwardClaudeCountTokens(c *gin.Context, channel *model.Channel, body []byte) (int, []byte, error) {
+// forwardClaudeCountTokens dispatches to the per-upstream forwarder based on
+// the channel type.
+func forwardClaudeCountTokens(c *gin.Context, channel *model.Channel, body []byte, modelName string) (int, []byte, error) {
+	switch channel.Type {
+	case constant.ChannelTypeVertexAi:
+		return forwardVertexCountTokens(c, channel, body, modelName)
+	default:
+		return forwardAnthropicCountTokens(c, channel, body)
+	}
+}
+
+func forwardAnthropicCountTokens(c *gin.Context, channel *model.Channel, body []byte) (int, []byte, error) {
 	baseURL := strings.TrimRight(channel.GetBaseURL(), "/")
 	if baseURL == "" {
 		baseURL = "https://api.anthropic.com"
@@ -184,8 +197,80 @@ func forwardClaudeCountTokens(c *gin.Context, channel *model.Channel, body []byt
 		req.Header.Set("anthropic-beta", beta)
 	}
 
+	return doCountTokensHTTP(c, channel, apiKey, req)
+}
+
+func forwardVertexCountTokens(c *gin.Context, channel *model.Channel, body []byte, modelName string) (int, []byte, error) {
+	apiKey := common.GetContextKeyString(c, constant.ContextKeyChannelKey)
+	otherSettings := channel.GetOtherSettings()
+	if otherSettings.VertexKeyType == dto.VertexKeyTypeAPIKey {
+		return 0, nil, fmt.Errorf("vertex count_tokens does not support api_key credentials, use a service-account JSON key")
+	}
+
+	creds := vertex.Credentials{}
+	if err := common.Unmarshal([]byte(apiKey), &creds); err != nil {
+		return 0, nil, fmt.Errorf("failed to decode vertex credentials: %w", err)
+	}
+	if creds.ProjectID == "" {
+		return 0, nil, fmt.Errorf("vertex credentials missing project_id")
+	}
+
+	region := vertex.GetModelRegion(channel.Other, modelName)
+	if region == "" {
+		region = "global"
+	}
+
+	var url string
+	if region == "global" {
+		url = fmt.Sprintf(
+			"https://aiplatform.googleapis.com/v1/projects/%s/locations/global/publishers/anthropic/models/count-tokens:rawPredict",
+			creds.ProjectID,
+		)
+	} else {
+		url = fmt.Sprintf(
+			"https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/anthropic/models/count-tokens:rawPredict",
+			region, creds.ProjectID, region,
+		)
+	}
+
+	proxy := channel.GetSetting().Proxy
+	cacheKey := fmt.Sprintf("access-token-%d", channel.Id)
+	var accessToken string
+	if val, cacheErr := vertex.Cache.Get(cacheKey); cacheErr == nil {
+		if s, ok := val.(string); ok {
+			accessToken = s
+		}
+	}
+	if accessToken == "" {
+		tok, tokErr := vertex.AcquireAccessToken(creds, proxy)
+		if tokErr != nil {
+			return 0, nil, fmt.Errorf("vertex access token failed: %w", tokErr)
+		}
+		accessToken = tok
+		_ = vertex.Cache.SetDefault(cacheKey, accessToken)
+	}
+
+	req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("x-goog-user-project", creds.ProjectID)
+
+	if beta := common.GetContextKeyString(c, constant.ContextKeyAnthropicBeta); beta != "" {
+		req.Header.Set("anthropic-beta", beta)
+	}
+
+	return doCountTokensHTTP(c, channel, apiKey, req)
+}
+
+func doCountTokensHTTP(c *gin.Context, channel *model.Channel, apiKey string, req *http.Request) (int, []byte, error) {
 	proxyURL := service.ResolveChannelProxy(channel.GetSetting().Proxy, channel.Id, apiKey)
-	var client *http.Client
+	var (
+		client *http.Client
+		err    error
+	)
 	if proxyURL != "" {
 		client, err = service.NewProxyHttpClient(proxyURL)
 		if err != nil {
