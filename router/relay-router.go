@@ -72,6 +72,13 @@ func SetRelayRouter(router *gin.Engine) {
 	relayV1Router.Use(middleware.TokenAuth())
 	relayV1Router.Use(middleware.ModelRequestRateLimit())
 	{
+		// Anthropic count_tokens: selects a random Anthropic-typed channel via the
+		// standard retry priority logic, forwards the request, no billing. Needs
+		// to live outside the Distribute() group because it performs its own
+		// channel selection (filtered by channel type).
+		relayV1Router.POST("/messages/count_tokens", controller.RelayClaudeCountTokens)
+	}
+	{
 		// WebSocket 路由（统一到 Relay）
 		wsRouter := relayV1Router.Group("")
 		wsRouter.Use(middleware.Distribute())
