@@ -1224,30 +1224,37 @@ func ClearAffinityOnFailure(c *gin.Context) {
 	if c == nil {
 		return
 	}
-	if !common.GetContextKeyBool(c, constant.ContextKeyAffinityHit) {
-		return
+
+	// 1) 清理 hash session affinity（hash 命中链路）
+	if common.GetContextKeyBool(c, constant.ContextKeyAffinityHit) {
+		affinityHash := common.GetContextKeyString(c, constant.ContextKeyAffinityHash)
+		if affinityHash != "" {
+			group := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+			if group == "auto" {
+				group = common.GetContextKeyString(c, constant.ContextKeyAutoGroup)
+			}
+			if group != "" && group != "auto" {
+				modelName := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
+				if modelName != "" {
+					ClearAffinityChannelId(group, modelName, affinityHash)
+				}
+			}
+		}
 	}
 
-	affinityHash := common.GetContextKeyString(c, constant.ContextKeyAffinityHash)
-	if affinityHash == "" {
-		return
+	// 2) 清理规则模板亲和性（或其他基于 channel_affinity_cache 的命中）
+	if cacheKey, _, ok := getChannelAffinityContext(c); ok {
+		// 仅清理本模块规则/模板缓存命名空间内的键，避免误删其他缓存。
+		cacheKey = strings.TrimSpace(cacheKey)
+		if cacheKey != "" && strings.HasPrefix(cacheKey, channelAffinityCacheNamespace+":") {
+			cache := getChannelAffinityCache()
+			if _, err := cache.DeleteMany([]string{cacheKey}); err != nil {
+				common.SysError(fmt.Sprintf("channel affinity cache delete failed: key=%s, err=%v", cacheKey, err))
+			}
+		}
 	}
 
-	group := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
-	if group == "auto" {
-		group = common.GetContextKeyString(c, constant.ContextKeyAutoGroup)
-	}
-	if group == "" || group == "auto" {
-		return
-	}
-
-	modelName := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
-	if modelName == "" {
-		return
-	}
-
-	ClearAffinityChannelId(group, modelName, affinityHash)
-	// Mark as cleared so we don't try to clear again on subsequent retries
+	// 防止同一次重试链路重复清理
 	common.SetContextKey(c, constant.ContextKeyAffinityHit, false)
 }
 

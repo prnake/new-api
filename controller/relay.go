@@ -543,6 +543,10 @@ func RelayTask(c *gin.Context) {
 				}
 			}
 		} else {
+			// Re-resolve channel on retries so a disabled/failed channel can be replaced by another.
+			if retryParam.GetRetry() > 0 {
+				relayInfo.ChannelMeta = nil
+			}
 			var channelErr *types.NewAPIError
 			channel, channelErr = getChannel(c, relayInfo, retryParam)
 			if channelErr != nil {
