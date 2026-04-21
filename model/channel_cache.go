@@ -206,6 +206,78 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, requestBet
 	return nil, errors.New("channel not found")
 }
 
+// ListEnabledChannelsForModel returns every enabled channel that can serve
+// (group, model). It is a flat candidate set — no priority/weight filter is
+// applied, so callers that want uniform random routing across all matching
+// channels can use it directly.
+func ListEnabledChannelsForModel(group, modelName string, requestBetas []string) ([]*Channel, error) {
+	if !common.MemoryCacheEnabled {
+		return listEnabledChannelsFromDB(group, modelName, requestBetas)
+	}
+	channelSyncLock.RLock()
+	defer channelSyncLock.RUnlock()
+
+	ids := group2model2channels[group][modelName]
+	if len(ids) == 0 {
+		normalized := ratio_setting.FormatMatchingModelName(modelName)
+		ids = group2model2channels[group][normalized]
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	out := make([]*Channel, 0, len(ids))
+	for _, id := range ids {
+		ch, ok := channelsIDM[id]
+		if !ok {
+			continue
+		}
+		if len(requestBetas) > 0 && !ch.IsAcceptAnthropicBeta(requestBetas) {
+			continue
+		}
+		out = append(out, ch)
+	}
+	return out, nil
+}
+
+func listEnabledChannelsFromDB(group, modelName string, requestBetas []string) ([]*Channel, error) {
+	var abilities []Ability
+	err := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, modelName, true).Find(&abilities).Error
+	if err != nil {
+		return nil, err
+	}
+	if len(abilities) == 0 {
+		normalized := ratio_setting.FormatMatchingModelName(modelName)
+		if normalized != "" && normalized != modelName {
+			if err := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, normalized, true).Find(&abilities).Error; err != nil {
+				return nil, err
+			}
+		}
+	}
+	if len(abilities) == 0 {
+		return nil, nil
+	}
+	seen := make(map[int]struct{}, len(abilities))
+	channels := make([]*Channel, 0, len(abilities))
+	for _, ab := range abilities {
+		if _, ok := seen[ab.ChannelId]; ok {
+			continue
+		}
+		seen[ab.ChannelId] = struct{}{}
+		ch := &Channel{}
+		if dbErr := DB.First(ch, "id = ?", ab.ChannelId).Error; dbErr != nil {
+			continue
+		}
+		if ch.Status != common.ChannelStatusEnabled {
+			continue
+		}
+		if len(requestBetas) > 0 && !ch.IsAcceptAnthropicBeta(requestBetas) {
+			continue
+		}
+		channels = append(channels, ch)
+	}
+	return channels, nil
+}
+
 func CacheGetChannel(id int) (*Channel, error) {
 	if !common.MemoryCacheEnabled {
 		return GetChannelById(id, true)

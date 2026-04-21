@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"strings"
 
@@ -15,7 +16,9 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel/vertex"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/types"
 
+	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
 )
 
@@ -27,9 +30,10 @@ type claudeCountTokensMeta struct {
 }
 
 // RelayClaudeCountTokens proxies POST /v1/messages/count_tokens to a random
-// Claude-capable upstream channel (Anthropic native or Vertex AI), reusing the
-// normal retry priority logic. The endpoint is treated as a free utility — no
-// quota is pre-consumed or settled. The request body is forwarded verbatim.
+// Claude-capable upstream channel (Anthropic native or Vertex AI). All matching
+// channels are pooled and picked from uniformly — priority and weight are
+// ignored since count_tokens is a free utility and every key is equivalent for
+// this purpose. The request body is forwarded verbatim; no quota is consumed.
 func RelayClaudeCountTokens(c *gin.Context) {
 	storage, err := common.GetBodyStorage(c)
 	if err != nil {
@@ -53,8 +57,6 @@ func RelayClaudeCountTokens(c *gin.Context) {
 	}
 
 	modelName := meta.Model
-	// Mirror the same suffix handling that /v1/messages applies so channel
-	// lookup uses the base model name.
 	if strings.HasSuffix(modelName, "-cc") {
 		modelName = strings.TrimSuffix(modelName, "-cc")
 		common.SetContextKey(c, constant.ContextKeyCCMode, true)
@@ -77,35 +79,24 @@ func RelayClaudeCountTokens(c *gin.Context) {
 		requestBetas = model.ParseAnthropicBeta(anthropicBeta)
 	}
 
+	candidates, err := collectCountTokensCandidates(c, tokenGroup, modelName, requestBetas)
+	if err != nil {
+		logger.LogError(c, fmt.Sprintf("count_tokens list channels failed: %s", err.Error()))
+	}
+	if len(candidates) == 0 {
+		writeClaudeCountError(c, http.StatusServiceUnavailable, "api_error",
+			fmt.Sprintf("no available anthropic/vertex channel for model %s", modelName))
+		return
+	}
+
+	rand.Shuffle(len(candidates), func(i, j int) { candidates[i], candidates[j] = candidates[j], candidates[i] })
+
 	var (
 		lastStatus int
 		lastBody   []byte
 	)
 
-	retryParam := &service.RetryParam{
-		Ctx:          c,
-		TokenGroup:   tokenGroup,
-		ModelName:    modelName,
-		Retry:        common.GetPointer(0),
-		RequestBetas: requestBetas,
-	}
-
-	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
-		channel, _, selErr := service.CacheGetRandomSatisfiedChannel(retryParam)
-		if selErr != nil {
-			logger.LogError(c, fmt.Sprintf("count_tokens select channel failed: %s", selErr.Error()))
-			break
-		}
-		if channel == nil {
-			break
-		}
-
-		// count_tokens has two supported upstream forms: the native Anthropic
-		// API and Vertex AI. Skip any other channel type.
-		if channel.Type != constant.ChannelTypeAnthropic && channel.Type != constant.ChannelTypeVertexAi {
-			continue
-		}
-
+	for _, channel := range candidates {
 		if setupErr := middleware.SetupContextForSelectedChannel(c, channel, modelName); setupErr != nil {
 			logger.LogError(c, fmt.Sprintf("count_tokens setup channel #%d failed: %s", channel.Id, setupErr.Error()))
 			continue
@@ -122,6 +113,8 @@ func RelayClaudeCountTokens(c *gin.Context) {
 			c.Data(status, "application/json", respBody)
 			return
 		}
+
+		maybeDisableCountTokensChannel(c, channel, status, respBody)
 
 		lastStatus = status
 		lastBody = respBody
@@ -142,6 +135,81 @@ func RelayClaudeCountTokens(c *gin.Context) {
 		return
 	}
 	c.Data(lastStatus, "application/json", lastBody)
+}
+
+// collectCountTokensCandidates returns every enabled Anthropic/Vertex channel
+// that can serve the model, across all applicable groups. Channels that appear
+// in multiple auto groups are deduplicated.
+func collectCountTokensCandidates(c *gin.Context, tokenGroup, modelName string, requestBetas []string) ([]*model.Channel, error) {
+	groups := []string{tokenGroup}
+	if tokenGroup == "auto" {
+		userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
+		groups = service.GetUserAutoGroup(userGroup)
+	}
+
+	seen := make(map[int]struct{})
+	var out []*model.Channel
+	var lastErr error
+	for _, group := range groups {
+		channels, err := model.ListEnabledChannelsForModel(group, modelName, requestBetas)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		for _, ch := range channels {
+			if ch.Type != constant.ChannelTypeAnthropic && ch.Type != constant.ChannelTypeVertexAi {
+				continue
+			}
+			if _, dup := seen[ch.Id]; dup {
+				continue
+			}
+			seen[ch.Id] = struct{}{}
+			out = append(out, ch)
+		}
+	}
+	if len(out) == 0 {
+		return nil, lastErr
+	}
+	return out, nil
+}
+
+// maybeDisableCountTokensChannel mirrors the auto-disable path used by the main
+// relay: build a NewAPIError from the upstream body, then let
+// service.ShouldDisableChannel decide (status-code rules + keyword matching)
+// whether to disable the channel. count_tokens otherwise has no billing or
+// logging pipeline, so this is the only hook point for auto-ban on this route.
+func maybeDisableCountTokensChannel(c *gin.Context, channel *model.Channel, status int, body []byte) {
+	apiErr := parseClaudeCountTokensUpstreamError(status, body)
+	if !service.ShouldDisableChannel(apiErr) {
+		return
+	}
+	channelErr := *types.NewChannelError(
+		channel.Id,
+		channel.Type,
+		channel.Name,
+		channel.ChannelInfo.IsMultiKey,
+		common.GetContextKeyString(c, constant.ContextKeyChannelKey),
+		channel.GetAutoBan(),
+	)
+	if !channelErr.AutoBan {
+		return
+	}
+	gopool.Go(func() {
+		service.DisableChannel(channelErr, apiErr.ErrorWithStatusCode())
+	})
+}
+
+func parseClaudeCountTokensUpstreamError(status int, body []byte) *types.NewAPIError {
+	claudeErr := types.ClaudeError{}
+	var payload struct {
+		Error types.ClaudeError `json:"error"`
+	}
+	if err := common.Unmarshal(body, &payload); err == nil && (payload.Error.Message != "" || payload.Error.Type != "") {
+		claudeErr = payload.Error
+	} else {
+		claudeErr.Message = strings.TrimSpace(string(body))
+	}
+	return types.WithClaudeError(claudeErr, status)
 }
 
 func shouldRetryCountTokensStatus(status int) bool {
