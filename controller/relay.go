@@ -194,6 +194,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
 		relayInfo.RetryIndex = retryParam.GetRetry()
+		// Re-resolve channel on retries so a disabled/failed channel can be replaced by another
+		// candidate in the same request flow.
+		if retryParam.GetRetry() > 0 {
+			relayInfo.ChannelMeta = nil
+		}
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
 			logger.LogError(c, channelErr.Error())
