@@ -36,7 +36,7 @@ type ChannelOtherSettings struct {
 	AllowSafetyIdentifier                 bool          `json:"allow_safety_identifier,omitempty"`   // 是否允许 safety_identifier 透传（默认过滤以保护用户隐私）
 	AllowIncludeObfuscation               bool          `json:"allow_include_obfuscation,omitempty"` // 是否允许 stream_options.include_obfuscation 透传（默认过滤以避免关闭流混淆保护）
 	AwsKeyType                            AwsKeyType    `json:"aws_key_type,omitempty"`
-	AllowedAnthropicBeta                  []string      `json:"allowed_anthropic_beta,omitempty"` // 允许的 anthropic_beta 列表，为空则不限制
+	DisallowedAnthropicBeta               []string      `json:"disallowed_anthropic_beta,omitempty"` // 不允许的 anthropic_beta 列表，命中后会被移除；为空则不限制
 	UpstreamModelUpdateCheckEnabled       bool          `json:"upstream_model_update_check_enabled,omitempty"`        // 是否检测上游模型更新
 	UpstreamModelUpdateAutoSyncEnabled    bool          `json:"upstream_model_update_auto_sync_enabled,omitempty"`    // 是否自动同步上游模型更新
 	UpstreamModelUpdateLastCheckTime      int64         `json:"upstream_model_update_last_check_time,omitempty"`      // 上次检测时间

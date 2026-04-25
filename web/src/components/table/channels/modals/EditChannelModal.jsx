@@ -206,7 +206,7 @@ const EditChannelModal = (props) => {
     allow_service_tier: false,
     disable_store: false, // false = 允许透传（默认开启）
     allow_safety_identifier: false,
-    allowed_anthropic_beta: [],
+    disallowed_anthropic_beta: [],
     allow_include_obfuscation: false,
     allow_inference_geo: false,
     allow_speed: false,
@@ -888,8 +888,8 @@ const EditChannelModal = (props) => {
           data.disable_store = parsedSettings.disable_store || false;
           data.allow_safety_identifier =
             parsedSettings.allow_safety_identifier || false;
-          data.allowed_anthropic_beta =
-            parsedSettings.allowed_anthropic_beta || [];
+          data.disallowed_anthropic_beta =
+            parsedSettings.disallowed_anthropic_beta || [];
           data.allow_include_obfuscation =
             parsedSettings.allow_include_obfuscation || false;
           data.allow_inference_geo =
@@ -922,7 +922,7 @@ const EditChannelModal = (props) => {
           data.allow_service_tier = false;
           data.disable_store = false;
           data.allow_safety_identifier = false;
-          data.allowed_anthropic_beta = [];
+          data.disallowed_anthropic_beta = [];
           data.allow_include_obfuscation = false;
           data.allow_inference_geo = false;
           data.allow_speed = false;
@@ -941,7 +941,7 @@ const EditChannelModal = (props) => {
         data.allow_service_tier = false;
         data.disable_store = false;
         data.allow_safety_identifier = false;
-        data.allowed_anthropic_beta = [];
+        data.disallowed_anthropic_beta = [];
         data.allow_include_obfuscation = false;
         data.allow_inference_geo = false;
         data.allow_speed = false;
@@ -1790,9 +1790,9 @@ const EditChannelModal = (props) => {
       }
     }
 
-    // type === 14 (Claude), 20 (OpenRouter), 33 (AWS), 41 (Vertex): 保存 allowed_anthropic_beta
+    // type === 14 (Claude), 20 (OpenRouter), 33 (AWS), 41 (Vertex): 保存 disallowed_anthropic_beta
     if (localInputs.type === 14 || localInputs.type === 20 || localInputs.type === 33 || localInputs.type === 41) {
-      settings.allowed_anthropic_beta = localInputs.allowed_anthropic_beta || [];
+      settings.disallowed_anthropic_beta = localInputs.disallowed_anthropic_beta || [];
     }
 
     settings.upstream_model_update_check_enabled =
@@ -1836,7 +1836,7 @@ const EditChannelModal = (props) => {
     delete localInputs.allow_service_tier;
     delete localInputs.disable_store;
     delete localInputs.allow_safety_identifier;
-    delete localInputs.allowed_anthropic_beta;
+    delete localInputs.disallowed_anthropic_beta;
     delete localInputs.allow_include_obfuscation;
     delete localInputs.allow_inference_geo;
     delete localInputs.allow_speed;
@@ -2519,9 +2519,9 @@ const EditChannelModal = (props) => {
                         {t('Anthropic Beta 限制')}
                       </div>
                       <Form.TagInput
-                        field='allowed_anthropic_beta'
-                        label={t('允许的 anthropic_beta')}
-                        placeholder={t('输入 beta 标识后按回车添加，留空则不限制')}
+                        field='disallowed_anthropic_beta'
+                        label={t('不允许的 anthropic_beta')}
+                        placeholder={t('输入 beta 标识后按回车添加，留空则不限制；命中后会从请求中移除')}
                         allowDuplicates={false}
                         showClear
                       />

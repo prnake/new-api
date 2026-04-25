@@ -958,44 +958,45 @@ func ParseAnthropicBeta(header string) []string {
 	return result
 }
 
-// IsAcceptAnthropicBeta checks if all request betas are in the channel's allowed list.
+// IsAcceptAnthropicBeta checks if the request betas contain none of the channel's disallowed betas.
+// An empty disallow list means no restriction.
 func (channel *Channel) IsAcceptAnthropicBeta(requestBetas []string) bool {
 	if len(requestBetas) == 0 {
 		return true
 	}
 	settings := channel.GetOtherSettings()
-	if len(settings.AllowedAnthropicBeta) == 0 {
+	if len(settings.DisallowedAnthropicBeta) == 0 {
 		return true // no restriction
 	}
-	allowedSet := make(map[string]bool, len(settings.AllowedAnthropicBeta))
-	for _, b := range settings.AllowedAnthropicBeta {
-		allowedSet[strings.TrimSpace(b)] = true
+	disallowedSet := make(map[string]bool, len(settings.DisallowedAnthropicBeta))
+	for _, b := range settings.DisallowedAnthropicBeta {
+		disallowedSet[strings.TrimSpace(b)] = true
 	}
 	for _, b := range requestBetas {
-		if !allowedSet[strings.TrimSpace(b)] {
+		if disallowedSet[strings.TrimSpace(b)] {
 			return false
 		}
 	}
 	return true
 }
 
-// FilterAnthropicBeta returns only the betas that are in the channel's allowed list.
-// If the channel has no allowed list (unrestricted), all betas are returned.
+// FilterAnthropicBeta returns the request betas with the channel's disallowed betas removed.
+// If the channel has no disallowed list (unrestricted), all betas are returned.
 func (channel *Channel) FilterAnthropicBeta(requestBetas []string) []string {
 	if len(requestBetas) == 0 {
 		return nil
 	}
 	settings := channel.GetOtherSettings()
-	if len(settings.AllowedAnthropicBeta) == 0 {
+	if len(settings.DisallowedAnthropicBeta) == 0 {
 		return requestBetas // no restriction, pass all
 	}
-	allowedSet := make(map[string]bool, len(settings.AllowedAnthropicBeta))
-	for _, b := range settings.AllowedAnthropicBeta {
-		allowedSet[strings.TrimSpace(b)] = true
+	disallowedSet := make(map[string]bool, len(settings.DisallowedAnthropicBeta))
+	for _, b := range settings.DisallowedAnthropicBeta {
+		disallowedSet[strings.TrimSpace(b)] = true
 	}
 	var filtered []string
 	for _, b := range requestBetas {
-		if allowedSet[strings.TrimSpace(b)] {
+		if !disallowedSet[strings.TrimSpace(b)] {
 			filtered = append(filtered, b)
 		}
 	}

@@ -189,17 +189,17 @@ func addAnthropicBetaToRequest(c *gin.Context, info *relaycommon.RelayInfo, a *A
 		return
 	}
 
-	// Filter betas against channel's AllowedAnthropicBeta list (defense-in-depth,
+	// Strip betas listed in the channel's DisallowedAnthropicBeta list (defense-in-depth,
 	// consistent with the Claude direct adaptor's CommonClaudeHeadersOperation).
-	if len(info.ChannelOtherSettings.AllowedAnthropicBeta) > 0 {
-		allowedSet := make(map[string]bool, len(info.ChannelOtherSettings.AllowedAnthropicBeta))
-		for _, b := range info.ChannelOtherSettings.AllowedAnthropicBeta {
-			allowedSet[strings.TrimSpace(b)] = true
+	if len(info.ChannelOtherSettings.DisallowedAnthropicBeta) > 0 {
+		disallowedSet := make(map[string]bool, len(info.ChannelOtherSettings.DisallowedAnthropicBeta))
+		for _, b := range info.ChannelOtherSettings.DisallowedAnthropicBeta {
+			disallowedSet[strings.TrimSpace(b)] = true
 		}
 		var filtered []string
 		for _, b := range strings.Split(anthropicBeta, ",") {
 			b = strings.TrimSpace(b)
-			if b != "" && allowedSet[b] {
+			if b != "" && !disallowedSet[b] {
 				filtered = append(filtered, b)
 			}
 		}

@@ -76,18 +76,19 @@ func CommonClaudeHeadersOperation(c *gin.Context, req *http.Header, info *relayc
 	// common headers operation
 	anthropicBeta := c.Request.Header.Get("anthropic-beta")
 	if anthropicBeta != "" {
-		// Defense-in-depth: always filter anthropic-beta by the channel's allowed list,
-		// even if the distributor already filtered. This catches edge cases in retry/fallback
-		// paths where the header may not have been filtered for the current channel.
-		if len(info.ChannelOtherSettings.AllowedAnthropicBeta) > 0 {
-			allowedSet := make(map[string]bool, len(info.ChannelOtherSettings.AllowedAnthropicBeta))
-			for _, b := range info.ChannelOtherSettings.AllowedAnthropicBeta {
-				allowedSet[strings.TrimSpace(b)] = true
+		// Defense-in-depth: always strip anthropic-beta entries that are in the channel's
+		// disallow list, even if the distributor already filtered. This catches edge cases
+		// in retry/fallback paths where the header may not have been filtered for the
+		// current channel.
+		if len(info.ChannelOtherSettings.DisallowedAnthropicBeta) > 0 {
+			disallowedSet := make(map[string]bool, len(info.ChannelOtherSettings.DisallowedAnthropicBeta))
+			for _, b := range info.ChannelOtherSettings.DisallowedAnthropicBeta {
+				disallowedSet[strings.TrimSpace(b)] = true
 			}
 			var filtered []string
 			for _, b := range strings.Split(anthropicBeta, ",") {
 				b = strings.TrimSpace(b)
-				if b != "" && allowedSet[b] {
+				if b != "" && !disallowedSet[b] {
 					filtered = append(filtered, b)
 				}
 			}
@@ -99,6 +100,8 @@ func CommonClaudeHeadersOperation(c *gin.Context, req *http.Header, info *relayc
 		}
 		if anthropicBeta != "" {
 			req.Set("anthropic-beta", anthropicBeta)
+		} else {
+			req.Del("anthropic-beta")
 		}
 	}
 	model_setting.GetClaudeSettings().WriteHeaders(info.OriginModelName, req)
